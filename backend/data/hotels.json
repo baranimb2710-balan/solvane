@@ -1,0 +1,138 @@
+[
+  {
+    "_comment": "NOTE: These are sample entries for well-known hotels and lodges near Rameswaram. All data is unverified and will be replaced with real checked data before production.",
+    "id": "hotel-tamil-nadu-ttdc",
+    "name": "Hotel Tamil Nadu (TTDC)",
+    "area": "Agni Theertham Beachfront",
+    "category": "mid_range",
+    "price_range_per_night": "₹1,800 to ₹3,500",
+    "rating": 4.1,
+    "amenities": [
+      "Air Conditioning",
+      "Free Parking",
+      "Multi-Cuisine Restaurant",
+      "Beach View",
+      "24-Hour Front Desk"
+    ],
+    "contact": "Check on Google Maps",
+    "lat": 9.2895,
+    "lng": 79.3198,
+    "nearby_place_ids": ["agni-theertham", "ramanathaswamy-temple"],
+    "image": "/images/hotels/hotel-tamil-nadu.jpg",
+    "map_link": "https://maps.google.com/?q=Hotel+Tamil+Nadu+TTDC+Rameswaram",
+    "verified": false
+  },
+  {
+    "_comment": "NOTE: These are sample entries for well-known hotels and lodges near Rameswaram. All data is unverified and will be replaced with real checked data before production.",
+    "id": "daiwik-hotels-rameswaram",
+    "name": "Daiwik Hotels Rameswaram",
+    "area": "NH 87, Near Railway Station",
+    "category": "premium",
+    "price_range_per_night": "₹3,800 to ₹7,000",
+    "rating": 4.3,
+    "amenities": [
+      "Multi-Cuisine Pure Veg Restaurant",
+      "Pilgrim Activity Desk",
+      "Free Wi-Fi",
+      "Valet Parking",
+      "Spa & Wellness",
+      "Banquet Hall"
+    ],
+    "contact": "Check on Google Maps",
+    "lat": 9.2842,
+    "lng": 79.3012,
+    "nearby_place_ids": ["ramanathaswamy-temple", "kalam-house"],
+    "image": "/images/hotels/daiwik-hotels.jpg",
+    "map_link": "https://maps.google.com/?q=Daiwik+Hotels+Rameswaram",
+    "verified": false
+  },
+  {
+    "_comment": "NOTE: These are sample entries for well-known hotels and lodges near Rameswaram. All data is unverified and will be replaced with real checked data before production.",
+    "id": "hotel-ashoka-rameswaram",
+    "name": "Hotel Ashoka",
+    "area": "Rameswaram Temple West Gate",
+    "category": "budget",
+    "price_range_per_night": "₹900 to ₹1,800",
+    "rating": 3.9,
+    "amenities": [
+      "Air Conditioning Options",
+      "24-Hour Hot Water",
+      "Room Service",
+      "Close to Temple Walkway"
+    ],
+    "contact": "Check on Google Maps",
+    "lat": 9.2885,
+    "lng": 79.3148,
+    "nearby_place_ids": ["ramanathaswamy-temple", "five-faced-hanuman-temple"],
+    "image": "/images/hotels/hotel-ashoka.jpg",
+    "map_link": "https://maps.google.com/?q=Hotel+Ashoka+Rameswaram",
+    "verified": false
+  },
+  {
+    "_comment": "NOTE: These are sample entries for well-known hotels and lodges near Rameswaram. All data is unverified and will be replaced with real checked data before production.",
+    "id": "hotel-saravana-rameswaram",
+    "name": "Hotel Saravana",
+    "area": "South Car Street, Temple Area",
+    "category": "budget",
+    "price_range_per_night": "₹800 to ₹1,500",
+    "rating": 3.8,
+    "amenities": [
+      "Pure Veg Restaurant Attached",
+      "Elevator",
+      "24-Hour Water",
+      "Luggage Storage"
+    ],
+    "contact": "Check on Google Maps",
+    "lat": 9.2872,
+    "lng": 79.3168,
+    "nearby_place_ids": ["ramanathaswamy-temple", "agni-theertham"],
+    "image": "/images/hotels/hotel-saravana.jpg",
+    "map_link": "https://maps.google.com/?q=Hotel+Saravana+Rameswaram",
+    "verified": false
+  },
+  {
+    "_comment": "NOTE: These are sample entries for well-known hotels and lodges near Rameswaram. All data is unverified and will be replaced with real checked data before production.",
+    "id": "jiwan-residency",
+    "name": "Jiwan Residency",
+    "area": "1 km from Sri Ramanathaswamy Temple",
+    "category": "mid_range",
+    "price_range_per_night": "₹2,200 to ₹4,200",
+    "rating": 4.2,
+    "amenities": [
+      "Vegetarian Restaurant",
+      "Conference Room",
+      "Free Wi-Fi",
+      "Travel Assistance",
+      "Power Backup"
+    ],
+    "contact": "Check on Google Maps",
+    "lat": 9.2861,
+    "lng": 79.3095,
+    "nearby_place_ids": ["kalam-house", "ramanathaswamy-temple"],
+    "image": "/images/hotels/jiwan-residency.jpg",
+    "map_link": "https://maps.google.com/?q=Jiwan+Residency+Rameswaram",
+    "verified": false
+  },
+  {
+    "_comment": "NOTE: These are sample entries for well-known hotels and lodges near Rameswaram. All data is unverified and will be replaced with real checked data before production.",
+    "id": "gujarat-bhavan-dharamshala",
+    "name": "Gujarat Bhavan Pilgrim Dharamshala",
+    "area": "North Car Street, Temple Area",
+    "category": "lodge_dharamshala",
+    "price_range_per_night": "₹400 to ₹900",
+    "rating": 4.0,
+    "amenities": [
+      "Traditional Dining Hall (Bhojanalaya)",
+      "Basic Pilgrim Rooms",
+      "Hot Water Hours",
+      "Safe Locker"
+    ],
+    "contact": "Check on Google Maps",
+    "lat": 9.2902,
+    "lng": 79.3162,
+    "nearby_place_ids": ["ramanathaswamy-temple", "agni-theertham"],
+    "image": "/images/hotels/gujarat-bhavan.jpg",
+    "map_link": "https://maps.google.com/?q=Gujarat+Bhavan+Rameswaram",
+    "verified": false
+  }
+]

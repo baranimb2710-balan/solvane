@@ -1,0 +1,64 @@
+# =============================================================================
+# Root .gitignore for Solvane (React + Vite Frontend & FastAPI Backend)
+# =============================================================================
+
+# Environment files
+.env
+.env.*
+*.env
+*.env.*
+!.env.example
+backend/.env
+frontend/.env
+frontend/.env.local
+
+# Python virtual environments
+.venv/
+venv/
+ENV/
+env/
+backend/.venv/
+backend/venv/
+backend/env/
+
+# Node.js dependencies
+node_modules/
+frontend/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python bytecode & cache
+__pycache__/
+backend/**/__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Frontend build outputs
+dist/
+dist-ssr/
+frontend/dist/
+frontend/dist-ssr/
+
+# SQLite databases & runtime locks
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+solvane.db
+backend/solvane.db
+backend/solvane.db-journal
+
+# Uploaded images (preserve empty .gitkeep marker)
+backend/uploads/*
+!backend/uploads/.gitkeep
+uploads/*
+!uploads/.gitkeep
+
+# Operating system & editor metadata
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
