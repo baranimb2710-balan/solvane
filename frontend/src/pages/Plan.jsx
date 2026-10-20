@@ -318,13 +318,32 @@ export default function Plan() {
                 return (
                   <div className="bg-slate-900/85 backdrop-blur-xl border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
                     {/* Day Title & Zone Summary */}
-                    <div className="border-b border-white/10 pb-4">
-                      <h2 className="text-xl sm:text-2xl font-black text-white">
-                        {day.title}
-                      </h2>
-                      <p className="text-xs sm:text-sm text-slate-300 mt-1">
-                        {day.zone_summary}
-                      </p>
+                    <div className="border-b border-white/10 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div>
+                        <h2 className="text-xl sm:text-2xl font-black text-white">
+                          {day.title}
+                        </h2>
+                        <p className="text-xs sm:text-sm text-slate-300 mt-1">
+                          {day.zone_summary}
+                        </p>
+                      </div>
+                      {day.stops && day.stops.length > 0 && (
+                        <button
+                          onClick={() =>
+                            navigate('/map', {
+                              state: {
+                                routeStops: day.stops,
+                                dayNumber: day.day,
+                                dayTitle: day.title,
+                              },
+                            })
+                          }
+                          className="self-start sm:self-auto inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 shadow-md shadow-sky-500/20 hover:scale-105 active:scale-95 transition-all cursor-pointer border border-sky-400/30 whitespace-nowrap"
+                        >
+                          <span>🗺️</span>
+                          <span>Show on Map</span>
+                        </button>
+                      )}
                     </div>
 
                     {/* Vertical Timeline */}

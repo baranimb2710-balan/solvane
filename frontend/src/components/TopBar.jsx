@@ -53,6 +53,9 @@ export default function TopBar({ active = '' }) {
         <Link to="/plan" className={linkClass('plan')}>
           Plan
         </Link>
+        <Link to="/map" className={linkClass('map')}>
+          Map
+        </Link>
         <Link to="/chat" className={linkClass('chat')}>
           <span className="flex items-center gap-1.5">
             <svg className="w-3.5 h-3.5 text-amber-300" viewBox="0 0 24 24" fill="currentColor">

@@ -9,6 +9,7 @@ import Destinations from './pages/Destinations';
 import PlaceDetail from './pages/PlaceDetail';
 import Plan from './pages/Plan';
 import Chat from './pages/Chat';
+import MapPage from './pages/MapPage';
 import Explore from './pages/Explore';
 import ExploreCategory from './pages/ExploreCategory';
 import ExploreHotels from './pages/ExploreHotels';
@@ -108,6 +109,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Chat />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/map"
+            element={
+              <ProtectedRoute>
+                <MapPage />
               </ProtectedRoute>
             }
           />

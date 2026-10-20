@@ -387,6 +387,8 @@ def generate_itinerary(
                 "name": place["name_en"],
                 "name_ta": place.get("name_ta", ""),
                 "category": place.get("category", "heritage"),
+                "lat": place.get("lat"),
+                "lng": place.get("lng"),
                 "image": place.get("image", "/images/placeholder.jpg"),
                 "start_time": start_str,
                 "end_time": end_str,
