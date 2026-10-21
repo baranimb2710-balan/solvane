@@ -101,6 +101,18 @@ def init_db():
     );
     """)
 
+    # 5. Plan narrations cache table (caches AI generated tips per user & plan hash)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS plan_narrations (
+        user_id INTEGER,
+        plan_hash TEXT NOT NULL,
+        narration_json TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, plan_hash),
+        FOREIGN KEY (user_id) REFERENCES users(user_id)
+    );
+    """)
+
     conn.commit()
     conn.close()
 
@@ -458,4 +470,44 @@ def log_chat_question(user_id: int, question: str):
         conn.close()
     except Exception as e:
         print(f"Error logging chat question: {e}")
+
+def get_cached_plan_narration(user_id: int, plan_hash: str):
+    """
+    Retrieves cached AI plan narration if it exists for this user and plan hash.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT narration_json FROM plan_narrations WHERE user_id = ? AND plan_hash = ?",
+        (user_id, plan_hash)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        try:
+            return json.loads(row["narration_json"])
+        except Exception:
+            return None
+    return None
+
+def save_plan_narration(user_id: int, plan_hash: str, narration_data: dict):
+    """
+    Saves or updates AI plan narration in SQLite cache.
+    """
+    try:
+        narration_json = json.dumps(narration_data)
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO plan_narrations (user_id, plan_hash, narration_json)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, plan_hash) DO UPDATE SET
+                narration_json = excluded.narration_json,
+                created_at = CURRENT_TIMESTAMP
+        """, (user_id, plan_hash, narration_json))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error caching plan narration: {e}")
+
 

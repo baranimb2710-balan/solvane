@@ -65,16 +65,35 @@ def generate_reply(system_prompt: str, messages: list) -> str:
             config = types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 temperature=0.3,
-                max_output_tokens=800,
+                max_output_tokens=3000,
             )
 
-            response = client.models.generate_content(
-                model=model_name,
-                contents=contents,
-                config=config,
-            )
+            # Candidate models: start with configured model, then fallback if transient 503 spike occurs
+            models_to_try = [model_name]
+            for fb in ["gemini-3.5-flash", "gemini-flash-latest"]:
+                if fb not in models_to_try:
+                    models_to_try.append(fb)
+
+            response = None
+            last_err = None
+            for m in models_to_try:
+                try:
+                    response = client.models.generate_content(
+                        model=m,
+                        contents=contents,
+                        config=config,
+                    )
+                    if response and response.text:
+                        break
+                except Exception as ex:
+                    last_err = ex
+                    if "503" in str(ex) or "404" in str(ex):
+                        continue
+                    raise
 
             if not response or not response.text:
+                if last_err:
+                    raise last_err
                 raise RuntimeError("Empty response received from Gemini AI.")
 
             return response.text.strip()

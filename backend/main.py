@@ -40,8 +40,11 @@ from database import (
     update_place_db,
     delete_place_db,
     log_chat_question,
+    get_cached_plan_narration,
+    save_plan_narration,
 )
 import time
+import hashlib
 from ai_client import generate_reply
 from retrieval import retrieve_relevant_entries
 
@@ -1042,6 +1045,398 @@ def chat_with_solvane(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Our AI guide is having a momentary hiccup. Please try asking again in a moment."
         )
+
+# -------------------------------------------------------------
+# AI-ENHANCED PLAN NARRATION: MODELS, CACHE & ENDPOINT
+# -------------------------------------------------------------
+class TripEnhanceDetails(BaseModel):
+    budget: Optional[float] = 5000.0
+    days: Optional[Union[str, int, float]] = 2
+    travellingWith: Optional[str] = Field(default="family", description="solo, friends, family, or seniors")
+    interests: Optional[List[str]] = Field(default=[], description="User interest categories")
+
+class PlanEnhanceRequest(BaseModel):
+    plan: dict = Field(..., description="The plan object returned by /api/plan")
+    trip: Optional[TripEnhanceDetails] = None
+    force_refresh: Optional[bool] = Field(default=False, description="Whether to bypass SQLite cache")
+
+# Rate limit for plan narration: 10 requests per 10 minutes per user
+PLAN_ENHANCE_RATE_LIMITS = {}
+MAX_ENHANCE_REQUESTS = 10
+ENHANCE_WINDOW_SECONDS = 600  # 10 minutes
+
+def check_enhance_rate_limit(user_id: int):
+    """Enforces rate limit of 10 enhance requests per 10 minutes per user."""
+    now = time.time()
+    user_times = PLAN_ENHANCE_RATE_LIMITS.get(user_id, [])
+    user_times = [t for t in user_times if now - t < ENHANCE_WINDOW_SECONDS]
+    if len(user_times) >= MAX_ENHANCE_REQUESTS:
+        PLAN_ENHANCE_RATE_LIMITS[user_id] = user_times
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="You have requested several plan tip updates. Please wait a few minutes before trying again (limit: 10 requests per 10 minutes)."
+        )
+    user_times.append(now)
+    PLAN_ENHANCE_RATE_LIMITS[user_id] = user_times
+
+def compute_plan_hash(plan: dict, trip: Optional[TripEnhanceDetails]) -> str:
+    """Computes a deterministic SHA-256 hash of the plan stops sequence and trip details."""
+    simplified_days = []
+    if isinstance(plan.get("days"), list):
+        for d in plan["days"]:
+            day_num = d.get("day", 1)
+            stops = [s.get("place_id", "") for s in d.get("stops", []) if isinstance(s, dict)]
+            simplified_days.append({"day": day_num, "stops": stops})
+
+    trip_dict = {
+        "budget": float(trip.budget) if trip and trip.budget is not None else 5000.0,
+        "days": str(trip.days) if trip and trip.days is not None else "2",
+        "travellingWith": (trip.travellingWith or "family").lower().strip() if trip else "family",
+        "interests": sorted([i.lower().strip() for i in (trip.interests or []) if isinstance(i, str)]) if trip else []
+    }
+
+    hash_payload = {
+        "days": simplified_days,
+        "trip": trip_dict
+    }
+    encoded = json.dumps(hash_payload, sort_keys=True).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+def build_narration_prompt(plan: dict, trip: Optional[TripEnhanceDetails], place_db_map: dict) -> str:
+    """
+    Builds the AI system prompt strictly from database entries and validated trip metadata.
+    Does NOT pass untrusted user-written free text.
+    """
+    group_type = (trip.travellingWith or "family").lower().strip() if trip else "family"
+    interests_str = ", ".join(trip.interests) if (trip and trip.interests) else "General sightseeing"
+    cost_tier = plan.get("cost_estimates", {}).get("tier", "comfortable") if isinstance(plan.get("cost_estimates"), dict) else "comfortable"
+    budget_status = plan.get("cost_estimates", {}).get("status", "within budget") if isinstance(plan.get("cost_estimates"), dict) else "within budget"
+
+    # Assemble trusted place context for stops in the itinerary
+    stop_context_lines = []
+    has_dhanushkodi = False
+
+    for pid, p in place_db_map.items():
+        if "dhanushkodi" in pid.lower() or "arichal" in pid.lower():
+            has_dhanushkodi = True
+
+        name_en = p.get("name_en", "Attraction")
+        cat = p.get("category", "")
+        verified_str = "Verified" if p.get("verified", True) else "UNVERIFIED (details must be re-checked locally)"
+        timings = p.get("timings") or "Standard hours"
+        entry_fee = p.get("entry_fee") or "Standard entry"
+        dress = p.get("dress_code") or "Modest attire"
+        rules = p.get("photography_rules") or "Standard rules"
+        tips_list = ", ".join(p.get("tips", [])) if isinstance(p.get("tips"), list) else str(p.get("tips") or "")
+        short_desc = p.get("short_description") or ""
+
+        stop_context_lines.append(
+            f"- [{pid}] {name_en} ({cat}) | Status: {verified_str} | Timings: {timings} | "
+            f"Entry: {entry_fee} | Dress: {dress} | Photography: {rules} | "
+            f"Info: {short_desc} | Tips: {tips_list}"
+        )
+
+    places_text = "\n".join(stop_context_lines)
+
+    # Days sequence description
+    days_sequence_lines = []
+    for d in plan.get("days", []):
+        d_num = d.get("day", 1)
+        d_stops = [s.get("place_id") for s in d.get("stops", []) if s.get("place_id")]
+        days_sequence_lines.append(f"Day {d_num}: " + " -> ".join(d_stops))
+
+    days_sequence_text = "\n".join(days_sequence_lines)
+
+    dhanushkodi_clause = (
+        "\nIMPORTANT SAFETY MANDATE: Dhanushkodi is in this plan. Emphasize in safety notes and relevant tips "
+        "that all civilian vehicles and visitors must exit before sunset (entry typically closes by 5:00 PM - 5:30 PM) "
+        "for coastal tide safety."
+        if has_dhanushkodi else ""
+    )
+
+    return f"""You are "Solvane", a warm, knowledgeable, and practical local tourist guide for Ramanathapuram district in Tamil Nadu, India.
+
+TASK:
+Write friendly explanations, why-visit highlights, and practical local tips for the following pre-established itinerary.
+STRICT CONSTRAINT: You must NOT change the plan. Do NOT add, remove, reorder, or alter any stops, times, or costs. All places and their sequence are fixed.
+
+OPERATING GUIDELINES:
+1. TRUTH IN DATA: Use ONLY the provided verified or unverified place details below. Do NOT invent facts, phone numbers, extra places, fake timings, or false fees.
+2. UNVERIFIED NOTICES: If a place is UNVERIFIED, explicitly remind the visitor that timings, tickets, or opening status should be re-verified locally.
+3. GROUP & BUDGET CONTEXT:
+   - Travelling party: {group_type} (tailor pacing, advice, and tips specifically for {group_type}).
+   - Budget tier: {cost_tier} ({budget_status}).
+   - Interests: {interests_str}.{dhanushkodi_clause}
+4. CONCISE & PLAIN ENGLISH:
+   - Keep every sentence crisp, warm, and in natural, friendly English.
+   - Do NOT use Tanglish.
+5. OUTPUT FORMAT: Return ONLY a valid JSON object matching the exact structure below. Do not output markdown backticks, explanations, or commentary.
+
+ITINERARY SEQUENCE:
+{days_sequence_text}
+
+TRUSTED DESTINATIONS DATA:
+{places_text}
+
+REQUIRED JSON OUTPUT FORMAT:
+{{
+  "overview": "2 to 3 sentence friendly summary of the whole trip",
+  "days": [
+    {{
+      "day": 1,
+      "summary": "1 to 2 sentences summarizing this day's theme",
+      "stops": [
+        {{
+          "place_id": "exact_place_id",
+          "why_visit": "1 sentence highlighting what makes this stop special",
+          "local_tip": "1 sentence practical local insider tip"
+        }}
+      ]
+    }}
+  ],
+  "packing_tips": [
+    "3 to 5 practical items to pack (e.g. modest temple attire, hydration, sun protection, cash)"
+  ],
+  "safety_notes": [
+    "2 to 4 crucial safety reminders (e.g. coastal currents, temple dress decorum, sunset road closures)"
+  ],
+  "budget_advice": "1 to 2 sentences of practical advice on cash/UPI and local expenses"
+}}"""
+
+def parse_and_validate_narration(raw_text: str, plan_days: list, valid_place_ids: set) -> dict:
+    """
+    Safely parses AI JSON response, strips code fences, validates structure,
+    drops unrecognized stops, and truncates text fields to safe boundaries.
+    """
+    cleaned = raw_text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+        cleaned = cleaned.strip()
+
+    try:
+        data = json.loads(cleaned)
+    except Exception:
+        match = re.search(r"\{[\s\S]*\}", cleaned)
+        if match:
+            data = json.loads(match.group(0))
+        else:
+            raise ValueError("AI response does not contain valid JSON.")
+
+    if not isinstance(data, dict):
+        raise ValueError("AI response root must be a JSON object.")
+
+    # Overview
+    overview = str(data.get("overview", "")).strip()[:500]
+    if not overview:
+        overview = "Experience the sacred pilgrim heritage, coastal landscapes, and historic landmarks of Ramanathapuram and Rameswaram."
+
+    # Days mapping
+    ai_days = data.get("days", [])
+    ai_days_map = {}
+    if isinstance(ai_days, list):
+        for d in ai_days:
+            if isinstance(d, dict) and "day" in d:
+                ai_days_map[d["day"]] = d
+
+    sanitized_days = []
+    for p_day in plan_days:
+        day_num = p_day.get("day", 1)
+        plan_stops = p_day.get("stops", [])
+        ai_day = ai_days_map.get(day_num, {})
+
+        day_summary = str(ai_day.get("summary", "")).strip()[:300]
+        if not day_summary:
+            day_summary = f"Highlights and cultural experiences curated for Day {day_num}."
+
+        ai_stops_map = {}
+        if isinstance(ai_day.get("stops"), list):
+            for s in ai_day["stops"]:
+                if isinstance(s, dict) and s.get("place_id") in valid_place_ids:
+                    ai_stops_map[s["place_id"]] = s
+
+        sanitized_stops = []
+        for stop in plan_stops:
+            pid = stop.get("place_id")
+            if not pid or pid not in valid_place_ids:
+                continue
+            ai_stop = ai_stops_map.get(pid, {})
+            why_visit = str(ai_stop.get("why_visit", "")).strip()[:250]
+            local_tip = str(ai_stop.get("local_tip", "")).strip()[:250]
+
+            if not why_visit:
+                why_visit = f"One of Ramanathapuram's notable heritage landmarks."
+            if not local_tip:
+                local_tip = f"Plan sufficient time and follow local guidance on site."
+
+            sanitized_stops.append({
+                "place_id": pid,
+                "why_visit": why_visit,
+                "local_tip": local_tip
+            })
+
+        sanitized_days.append({
+            "day": day_num,
+            "summary": day_summary,
+            "stops": sanitized_stops
+        })
+
+    # Packing tips
+    raw_packing = data.get("packing_tips", [])
+    packing_tips = [str(x).strip()[:150] for x in raw_packing if str(x).strip()][:6]
+    if not packing_tips:
+        packing_tips = [
+            "Modest, breathable cotton attire suitable for temple entry.",
+            "Water bottle and sun hat for sunny coastal excursions.",
+            "Slip-on sandals for ease at pilgrimage shrine entrances.",
+            "Some currency notes for tender coconut stalls and island autos."
+        ]
+
+    # Safety notes
+    raw_safety = data.get("safety_notes", [])
+    safety_notes = [str(x).strip()[:150] for x in raw_safety if str(x).strip()][:6]
+    if not safety_notes:
+        safety_notes = [
+            "Be mindful of shoreline warning boards and avoid deep waters.",
+            "Remember that Dhanushkodi road closes before dusk for maritime security.",
+            "Stay well-hydrated under midday coastal sun."
+        ]
+
+    # Budget advice
+    budget_advice = str(data.get("budget_advice", "")).strip()[:300]
+    if not budget_advice:
+        budget_advice = "UPI payments work smoothly across main town stores, but keeping ₹500–₹1000 in cash is helpful for local temple prasad and island autos."
+
+    return {
+        "overview": overview,
+        "days": sanitized_days,
+        "packing_tips": packing_tips,
+        "safety_notes": safety_notes,
+        "budget_advice": budget_advice
+    }
+
+@app.post("/api/plan/enhance", tags=["Planner"])
+def enhance_plan_narration(
+    payload: PlanEnhanceRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    AI-enhanced plan narration endpoint.
+    - Validates plan structure and ensures all place IDs exist in SQLite database.
+    - Uses cached narration from 'plan_narrations' table when plan hash matches.
+    - Strictly builds AI prompt from trusted database entries only (no user free text).
+    - Enforces rate limit of 10 requests per 10 minutes per user.
+    - Safely parses and sanitizes AI JSON response.
+    - Does NOT modify plan stops, order, timings, or cost calculations.
+    """
+    user_id = current_user["user_id"]
+    plan = payload.plan
+
+    # 1. Validate plan structure
+    if not isinstance(plan, dict) or not isinstance(plan.get("days"), list):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid plan format: missing 'days' list."
+        )
+
+    plan_days = plan["days"]
+    if len(plan_days) == 0 or len(plan_days) > 10:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Plan days count must be between 1 and 10."
+        )
+
+    # 2. Extract and validate all place_ids against SQLite database
+    all_place_ids = []
+    for d in plan_days:
+        if not isinstance(d, dict) or not isinstance(d.get("stops"), list):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid day structure in Day {d.get('day', '?')}."
+            )
+        for s in d["stops"]:
+            pid = s.get("place_id")
+            if not pid or not isinstance(pid, str):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Every plan stop must contain a valid place_id."
+                )
+            all_place_ids.append(pid.strip())
+
+    if len(all_place_ids) == 0 or len(all_place_ids) > 35:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Plan must contain between 1 and 35 total stops."
+        )
+
+    # Verify every place exists in database
+    unique_place_ids = set(all_place_ids)
+    place_db_map = {}
+    for pid in unique_place_ids:
+        db_place = get_place_by_id_db(pid)
+        if not db_place:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid plan: place '{pid}' does not exist in destinations database."
+            )
+        place_db_map[pid] = db_place
+
+    # 3. Compute plan hash and check SQLite cache
+    plan_hash = compute_plan_hash(plan, payload.trip)
+    if not payload.force_refresh:
+        cached_narration = get_cached_plan_narration(user_id, plan_hash)
+        if cached_narration:
+            return {
+                "success": True,
+                "cached": True,
+                "narration": cached_narration
+            }
+
+    # 4. Check rate limit
+    check_enhance_rate_limit(user_id)
+
+    # 5. Build prompt strictly from trusted DB entries
+    system_prompt = build_narration_prompt(plan, payload.trip, place_db_map)
+    ai_messages = [
+        {"role": "user", "content": "Please generate the JSON narration for this Ramanathapuram itinerary according to the instructions."}
+    ]
+
+    # 6. Call AI provider
+    try:
+        raw_reply = generate_reply(system_prompt, ai_messages)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        print(f"Plan enhancement configuration error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="AI service is not configured properly. Please contact the administrator."
+        )
+    except Exception as e:
+        print(f"Plan enhancement execution error: {type(e).__name__} - {str(e)[:150]}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI guide is currently unavailable. You can still use the standard itinerary."
+        )
+
+    # 7. Safely parse and sanitize JSON
+    try:
+        narration = parse_and_validate_narration(raw_reply, plan_days, unique_place_ids)
+    except Exception as e:
+        print(f"Failed to parse AI narration JSON: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AI response could not be parsed into the required format. Please retry."
+        )
+
+    # 8. Save to SQLite cache
+    save_plan_narration(user_id, plan_hash, narration)
+
+    return {
+        "success": True,
+        "cached": False,
+        "narration": narration
+    }
 
 if __name__ == "__main__":
     import uvicorn

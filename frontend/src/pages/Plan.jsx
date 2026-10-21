@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useTrip } from '../context/TripContext';
-import { generatePlan, clearSession } from '../services/api';
+import { generatePlan, enhancePlan, clearSession } from '../services/api';
 import TopBar from '../components/TopBar';
 import FloatingChatButton from '../components/FloatingChatButton';
 
@@ -34,6 +34,11 @@ export default function Plan() {
   const [error, setError] = useState('');
   const [activeDayIndex, setActiveDayIndex] = useState(0);
 
+  // AI narration state
+  const [aiNarration, setAiNarration] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState(null);
+
   // Track failed thumbnail images
   const [failedThumbnails, setFailedThumbnails] = useState({});
 
@@ -44,6 +49,24 @@ export default function Plan() {
   const handleLogout = () => {
     clearSession();
     navigate('/login');
+  };
+
+  // Helper to fetch AI plan narration tips
+  const fetchAiTips = async (forceRefresh = false) => {
+    if (!planData) return;
+    setAiLoading(true);
+    setAiError(null);
+    const res = await enhancePlan({
+      plan: planData,
+      trip,
+      forceRefresh,
+    });
+    setAiLoading(false);
+    if (res.success && res.data?.narration) {
+      setAiNarration(res.data.narration);
+    } else {
+      setAiError(res.error || 'AI tips are unavailable right now.');
+    }
   };
 
   // 1. Redirect if required trip data is missing
@@ -64,6 +87,8 @@ export default function Plan() {
 
     setLoading(true);
     setError('');
+    setAiNarration(null);
+    setAiError(null);
 
     const daysToUse = overrideDays !== null ? overrideDays : (trip.days || 2);
 
@@ -240,8 +265,53 @@ export default function Plan() {
               <span>🔄</span>
               <span>Regenerate</span>
             </button>
+
+            {/* AI Tips Button */}
+            {!loading && planData && !aiNarration && !aiLoading && (
+              <button
+                onClick={() => fetchAiTips(false)}
+                className="px-4 py-1.5 rounded-full text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-300 hover:from-amber-300 hover:to-orange-300 shadow-md shadow-orange-500/20 hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <span>✨</span>
+                <span>Add AI tips</span>
+              </button>
+            )}
+
+            {aiLoading && (
+              <div className="px-3.5 py-1.5 rounded-full text-xs font-semibold text-amber-200 bg-amber-500/10 border border-amber-400/30 flex items-center gap-2 animate-pulse">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                <span>Generating AI tips...</span>
+              </div>
+            )}
+
+            {!loading && planData && aiNarration && (
+              <button
+                onClick={() => fetchAiTips(true)}
+                disabled={aiLoading}
+                className="px-3.5 py-1.5 rounded-full text-xs font-semibold text-amber-300 hover:text-white bg-amber-500/10 hover:bg-amber-500/20 border border-amber-400/30 transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <span>✨</span>
+                <span>Regenerate tips</span>
+              </button>
+            )}
           </div>
         </div>
+
+        {/* AI Tips Error Banner */}
+        {aiError && (
+          <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs animate-fade-in">
+            <div className="flex items-center gap-2 text-amber-200">
+              <span>⚠️</span>
+              <span>{aiError}</span>
+            </div>
+            <button
+              onClick={() => fetchAiTips(true)}
+              className="px-3.5 py-1 rounded-full text-xs font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/40 cursor-pointer transition-colors whitespace-nowrap"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         {/* ========================================================================= */}
         {/* 4. ERROR BANNER & RETRY */}
@@ -274,6 +344,41 @@ export default function Plan() {
         {/* ========================================================================= */}
         {!loading && !error && planData && (
           <>
+            {/* AI NARRATION LOADING SKELETON */}
+            {aiLoading && !aiNarration && (
+              <div className="p-6 rounded-3xl bg-slate-900/60 border border-amber-400/25 animate-pulse space-y-3 shadow-lg">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-5 h-5 rounded-full bg-amber-400/40" />
+                  <div className="h-4 bg-slate-800 rounded-full w-56" />
+                </div>
+                <div className="h-3.5 bg-slate-800/80 rounded-full w-full" />
+                <div className="h-3.5 bg-slate-800/80 rounded-full w-4/5" />
+              </div>
+            )}
+
+            {/* AI OVERVIEW CARD */}
+            {aiNarration?.overview && (
+              <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-orange-950/50 via-slate-900/90 to-sky-950/50 border border-orange-400/35 shadow-xl space-y-2 animate-fade-in">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">✨</span>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-orange-300">
+                      Solvane AI Trip Overview
+                    </h3>
+                  </div>
+                  <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-400/30">
+                    AI-generated tips
+                  </span>
+                </div>
+                <p className="text-sm text-slate-100 leading-relaxed font-medium">
+                  {aiNarration.overview}
+                </p>
+                <p className="text-[10px] text-slate-400 italic pt-1">
+                  Please confirm timings and prices locally.
+                </p>
+              </div>
+            )}
+
             {/* WARNINGS NOTICES */}
             {Array.isArray(planData.warnings) && planData.warnings.length > 0 && (
               <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-400/30 text-xs text-amber-200 space-y-1.5">
@@ -346,6 +451,17 @@ export default function Plan() {
                       )}
                     </div>
 
+                    {/* Day Summary from AI Narration */}
+                    {(() => {
+                      const dayNarration = aiNarration?.days?.find((d) => d.day === day.day);
+                      return dayNarration?.summary ? (
+                        <div className="p-3.5 rounded-2xl bg-orange-500/10 border border-orange-400/25 text-xs text-orange-200 flex items-start gap-2.5 animate-fade-in shadow-inner">
+                          <span className="text-sm shrink-0">✨</span>
+                          <p className="leading-relaxed font-medium">{dayNarration.summary}</p>
+                        </div>
+                      ) : null;
+                    })()}
+
                     {/* Vertical Timeline */}
                     <div className="relative pl-6 sm:pl-8 space-y-8 before:absolute before:left-2 sm:before:left-3 before:top-3 before:bottom-3 before:w-0.5 before:bg-gradient-to-b before:from-orange-500 before:via-sky-500 before:to-orange-500">
                       {day.stops?.map((stop, sIdx) => {
@@ -412,6 +528,30 @@ export default function Plan() {
                                     {stop.note}
                                   </p>
                                 )}
+
+                                {/* AI Narration: Why visit & Local tip */}
+                                {(() => {
+                                  const dayNarration = aiNarration?.days?.find((d) => d.day === day.day);
+                                  const stopNarration = dayNarration?.stops?.find((s) => s.place_id === stop.place_id);
+                                  if (!stopNarration) return null;
+
+                                  return (
+                                    <div className="mt-3 pt-2.5 border-t border-white/10 space-y-1.5 text-xs animate-fade-in">
+                                      {stopNarration.why_visit && (
+                                        <div className="flex items-start gap-1.5">
+                                          <span className="text-[11px] font-bold text-amber-400 shrink-0">Why visit:</span>
+                                          <span className="text-slate-200 leading-snug">{stopNarration.why_visit}</span>
+                                        </div>
+                                      )}
+                                      {stopNarration.local_tip && (
+                                        <div className="flex items-start gap-1.5">
+                                          <span className="text-[11px] font-bold text-sky-400 shrink-0">Local tip:</span>
+                                          <span className="text-slate-300 leading-snug">{stopNarration.local_tip}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             </div>
                           </div>
@@ -440,6 +580,92 @@ export default function Plan() {
                 );
               })()}
             </div>
+
+            {/* ========================================================================= */}
+            {/* AI NARRATION ADVISORY CARDS: PACKING, SAFETY & BUDGET */}
+            {/* ========================================================================= */}
+            {aiNarration && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 animate-fade-in">
+                {/* Packing Tips Card */}
+                <div className="p-5 sm:p-6 rounded-3xl bg-slate-900/85 border border-white/10 shadow-xl space-y-3 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">🎒</span>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-amber-300">
+                          Packing Tips
+                        </h3>
+                      </div>
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-white/5 text-slate-400 border border-white/10">
+                        AI-generated tips
+                      </span>
+                    </div>
+                    <ul className="space-y-2 text-xs text-slate-300">
+                      {aiNarration.packing_tips?.map((tip, idx) => (
+                        <li key={idx} className="flex items-start gap-2">
+                          <span className="text-amber-400 font-bold">•</span>
+                          <span className="leading-relaxed">{tip}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <p className="text-[10px] text-slate-500 italic pt-2 border-t border-white/5">
+                    Please confirm timings and prices locally.
+                  </p>
+                </div>
+
+                {/* Safety Notes Card */}
+                <div className="p-5 sm:p-6 rounded-3xl bg-slate-900/85 border border-white/10 shadow-xl space-y-3 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">🛡️</span>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-sky-300">
+                          Safety Notes
+                        </h3>
+                      </div>
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-white/5 text-slate-400 border border-white/10">
+                        AI-generated tips
+                      </span>
+                    </div>
+                    <ul className="space-y-2 text-xs text-slate-300">
+                      {aiNarration.safety_notes?.map((note, idx) => (
+                        <li key={idx} className="flex items-start gap-2">
+                          <span className="text-sky-400 font-bold">•</span>
+                          <span className="leading-relaxed">{note}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <p className="text-[10px] text-slate-500 italic pt-2 border-t border-white/5">
+                    Dhanushkodi road closes before dusk for tide safety.
+                  </p>
+                </div>
+
+                {/* Budget Advice Card */}
+                <div className="p-5 sm:p-6 rounded-3xl bg-slate-900/85 border border-white/10 shadow-xl space-y-3 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">💡</span>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-300">
+                          Budget Advice
+                        </h3>
+                      </div>
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-white/5 text-slate-400 border border-white/10">
+                        AI-generated tips
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      {aiNarration.budget_advice}
+                    </p>
+                  </div>
+                  <p className="text-[10px] text-slate-500 italic pt-2 border-t border-white/5">
+                    Please confirm timings and prices locally.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* ========================================================================= */}
             {/* 7. BUDGET SUMMARY CARD */}

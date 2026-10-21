@@ -459,6 +459,46 @@ export async function sendChatMessage({ message, history = [], trip = null }) {
   }
 }
 
+/**
+ * Calls /api/plan/enhance to fetch AI-generated tour narration, highlights,
+ * packing tips, safety notes, and budget advice for the current itinerary.
+ */
+export async function enhancePlan({ plan, trip, forceRefresh = false }) {
+  try {
+    const response = await authFetch('/api/plan/enhance', {
+      method: 'POST',
+      body: JSON.stringify({
+        plan,
+        trip: trip
+          ? {
+              budget: trip.budget,
+              days: trip.days,
+              travellingWith: trip.travellingWith,
+              interests: trip.interests,
+            }
+          : null,
+        force_refresh: forceRefresh,
+      }),
+    });
+    const data = await response.json().catch(() => null);
+    if (response.ok) {
+      return { success: true, data };
+    }
+    return {
+      success: false,
+      error: data?.detail || 'AI tips are unavailable right now.',
+      status: response.status,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: 'Cannot reach server, please try again.',
+      networkError: true,
+    };
+  }
+}
+
+
 
 
 
