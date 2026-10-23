@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import TopBar from '../components/TopBar';
+import Mascot from '../components/Mascot';
 import { getPlaces, getUser, getImageUrl } from '../services/api';
 import { useTrip } from '../context/TripContext';
 
@@ -58,6 +60,8 @@ const CATEGORY_META = {
 };
 
 export default function ExploreCategory() {
+  const { t, i18n } = useTranslation();
+  const isTamil = i18n.language === 'ta';
   const { category } = useParams();
   const navigate = useNavigate();
   const { trip, togglePlace } = useTrip();
@@ -278,7 +282,9 @@ export default function ExploreCategory() {
         {/* Empty State */}
         {!loading && !error && filteredPlaces.length === 0 && (
           <div className="p-12 text-center rounded-3xl bg-slate-900/60 border border-white/10 max-w-md mx-auto space-y-3">
-            <span className="text-4xl block">🔍</span>
+            <div className="flex justify-center mb-1">
+              <Mascot pose="pointing" size={68} animate={true} />
+            </div>
             <h3 className="text-lg font-bold text-white">No Matching Destinations</h3>
             <p className="text-xs text-slate-400">
               No places found in this category matching "{searchQuery}". Try clearing your search term.
@@ -392,22 +398,28 @@ export default function ExploreCategory() {
 
                   {/* Card Details */}
                   <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
-                    <div
-                      onClick={() => navigate(`/place/${place.id}`)}
-                      className="cursor-pointer space-y-1.5"
-                    >
-                      <h3 className="text-base sm:text-lg font-bold text-white group-hover:text-sky-300 transition-colors line-clamp-1">
-                        {place.name_en}
-                      </h3>
-                      {place.name_ta && (
-                        <p className="text-xs text-orange-300/80 font-medium">
-                          {place.name_ta}
-                        </p>
-                      )}
-                      <p className="text-xs text-slate-300/80 leading-relaxed line-clamp-2 pt-1">
-                        {place.short_description}
-                      </p>
-                    </div>
+                    {(() => {
+                      const primaryName = (isTamil && place.name_ta) ? place.name_ta : place.name_en;
+                      const secondaryName = (isTamil && place.name_ta) ? place.name_en : place.name_ta;
+                      return (
+                        <div
+                          onClick={() => navigate(`/place/${place.id}`)}
+                          className="cursor-pointer space-y-1.5"
+                        >
+                          <h3 className="text-base sm:text-lg font-bold text-white group-hover:text-sky-300 transition-colors line-clamp-1">
+                            {primaryName}
+                          </h3>
+                          {secondaryName && (
+                            <p className="text-xs text-orange-300/80 font-medium">
+                              {secondaryName}
+                            </p>
+                          )}
+                          <p className="text-xs text-slate-300/80 leading-relaxed line-clamp-2 pt-1">
+                            {place.short_description}
+                          </p>
+                        </div>
+                      );
+                    })()}
 
                     {/* Tags */}
                     {Array.isArray(place.tags) && place.tags.length > 0 && (
@@ -439,12 +451,12 @@ export default function ExploreCategory() {
                         {isAdded ? (
                           <>
                             <span>✓</span>
-                            <span>Added to Trip Bag</span>
+                            <span>{t('common.addedToTrip')}</span>
                           </>
                         ) : (
                           <>
                             <span>+</span>
-                            <span>Add to Trip</span>
+                            <span>{t('common.addToTrip')}</span>
                           </>
                         )}
                       </button>

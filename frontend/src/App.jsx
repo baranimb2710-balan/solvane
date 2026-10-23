@@ -14,6 +14,10 @@ import Explore from './pages/Explore';
 import ExploreCategory from './pages/ExploreCategory';
 import ExploreHotels from './pages/ExploreHotels';
 import ExploreFood from './pages/ExploreFood';
+import MyTrips from './pages/MyTrips';
+import About from './pages/About';
+import NotFound from './pages/NotFound';
+import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminPlacesList from './pages/admin/AdminPlacesList';
 import PlaceForm from './pages/admin/PlaceForm';
 import { ProtectedRoute, PublicOnlyRoute } from './components/ProtectedRoute';
@@ -105,6 +109,14 @@ export default function App() {
             }
           />
           <Route
+            path="/my-trips"
+            element={
+              <ProtectedRoute>
+                <MyTrips />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/chat"
             element={
               <ProtectedRoute>
@@ -165,6 +177,14 @@ export default function App() {
 
           {/* Administrator Protected Routes */}
           <Route
+            path="/admin"
+            element={
+              <AdminRoute>
+                <AdminDashboard />
+              </AdminRoute>
+            }
+          />
+          <Route
             path="/admin/places"
             element={
               <AdminRoute>
@@ -188,6 +208,12 @@ export default function App() {
               </AdminRoute>
             }
           />
+
+          {/* About Page */}
+          <Route path="/about" element={<About />} />
+
+          {/* Friendly 404 Catch-All Route */}
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </TripProvider>

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import TopBar from '../components/TopBar';
+import Mascot from '../components/Mascot';
 import { getFood, getPlaces } from '../services/api';
 
 /**
@@ -39,6 +41,8 @@ const DIET_FILTERS = [
 ];
 
 export default function ExploreFood() {
+  const { t, i18n } = useTranslation();
+  const isTamil = i18n.language === 'ta';
   const navigate = useNavigate();
 
   // Data fetching states
@@ -291,7 +295,9 @@ export default function ExploreFood() {
         {/* Empty State */}
         {!loading && !error && filteredFood.length === 0 && (
           <div className="p-12 text-center rounded-3xl bg-slate-900/60 border border-white/10 max-w-md mx-auto space-y-3">
-            <span className="text-4xl block">🍽️</span>
+            <div className="flex justify-center mb-1">
+              <Mascot pose="pointing" size={68} animate={true} />
+            </div>
             <h3 className="text-lg font-bold text-white">No Eateries Found</h3>
             <p className="text-xs text-slate-400">
               No food spots match your selected dietary or cuisine filters. Try choosing "All Eateries" or clear your search term.
@@ -374,8 +380,13 @@ export default function ExploreFood() {
                   <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
                     <div className="space-y-1.5">
                       <h3 className="text-base sm:text-lg font-bold text-white group-hover:text-orange-300 transition-colors line-clamp-1">
-                        {food.name}
+                        {(isTamil && food.name_ta) ? food.name_ta : food.name}
                       </h3>
+                      {food.name_ta && (
+                        <p className="text-xs text-orange-400/80 font-medium">
+                          {isTamil ? food.name : food.name_ta}
+                        </p>
+                      )}
                       <p className="text-xs text-slate-300 flex items-center gap-1.5">
                         <span className="text-orange-400">📍</span>
                         <span>{food.area}</span>

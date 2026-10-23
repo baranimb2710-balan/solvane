@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import TopBar from '../components/TopBar';
 import { getPlaces, getHotels, getFood } from '../services/api';
 
@@ -24,6 +25,7 @@ import { getPlaces, getHotels, getFood } from '../services/api';
 
 export default function Explore() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   // Counts state for all 8 categories
   const [counts, setCounts] = useState({
@@ -290,8 +292,19 @@ export default function Explore() {
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 py-6 text-center text-xs text-slate-400 border-t border-white/5">
-        Ramanathapuram AI Heritage Companion • Solvane
+      <footer className="relative z-10 py-6 px-4 text-center text-xs text-slate-400 border-t border-white/10 bg-slate-950/80 space-y-1">
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <p className="font-semibold text-slate-300">
+            {t('footer.madeFor', 'Solvane • Made for Ramanathapuram')}
+          </p>
+          <span className="text-white/20 hidden sm:inline">•</span>
+          <Link to="/about" className="text-sky-400 hover:text-sky-300 underline font-medium">
+            {t('about.navTitle', 'About Solvane')}
+          </Link>
+        </div>
+        <p className="text-[11px] text-slate-500 italic max-w-md mx-auto">
+          {t('footer.disclaimer', 'Information may change. Please verify timings and prices locally.')}
+        </p>
       </footer>
     </div>
   );

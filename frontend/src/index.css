@@ -9,7 +9,7 @@ body,
   width: 100%;
   height: 100%;
   overflow-x: hidden;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-family: 'Plus Jakarta Sans', 'Noto Sans Tamil', 'Nirmala UI', 'Latha', system-ui, -apple-system, sans-serif;
 }
 
 /* Smooth fade-in animations for welcome elements */
@@ -38,7 +38,22 @@ body,
   opacity: 0;
 }
 
-/* Leaflet custom popup styling */
+/* Leaflet custom popup & container styling */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+}
+
+/* Fix Leaflet DivIcon default white background & border */
+.leaflet-div-icon,
+.custom-map-pin,
+.custom-route-pin,
+.user-location-pin {
+  background: transparent !important;
+  border: none !important;
+}
+
 .leaflet-popup-content-wrapper {
   border-radius: 1rem !important;
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3) !important;
@@ -70,4 +85,31 @@ body,
 .animate-slide-up {
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* Subtle floating mascot animation */
+@keyframes mascotFloat {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+.animate-mascot-float {
+  animation: mascotFloat 3s ease-in-out infinite;
+}
+
+/* Accessible reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .animate-mascot-float,
+  .animate-fade-in,
+  .animate-fade-in-delayed,
+  .animate-fade-in-button,
+  .animate-slide-up {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 

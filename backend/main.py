@@ -1,5 +1,8 @@
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict, Any
 import json
+import sys
+import csv
+import math
 from pathlib import Path
 import re
 import uuid
@@ -8,7 +11,7 @@ import io
 from datetime import datetime, timedelta
 import bcrypt
 import jwt
-from fastapi import FastAPI, HTTPException, Header, Depends, status, Form, File, UploadFile
+from fastapi import FastAPI, HTTPException, Header, Depends, status, Form, File, UploadFile, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -42,6 +45,17 @@ from database import (
     log_chat_question,
     get_cached_plan_narration,
     save_plan_narration,
+    count_user_saved_plans,
+    save_user_plan,
+    get_user_saved_plans,
+    get_user_saved_plan_by_id,
+    delete_user_saved_plan_by_id,
+    get_admin_dashboard_stats,
+    get_admin_users_list,
+    get_admin_login_logs_list,
+    get_admin_chat_logs_list,
+    get_admin_all_users_for_export,
+    get_admin_all_login_logs_for_export,
 )
 import time
 import hashlib
@@ -328,52 +342,79 @@ class LoginResponse(BaseModel):
 @app.post("/api/signup", response_model=SignupResponse, status_code=status.HTTP_201_CREATED, tags=["Authentication"])
 def signup(payload: SignupRequest):
     """
-    Registers a new user into the Solvane platform.
-    Validates with matching frontend rules and securely hashes password with bcrypt.
+    Registers a new user into the Solvane platform with simplified matching rules:
+    - Username: 3 to 20 characters, letters, numbers, and underscore only.
+    - Email: valid email format, trimmed, case-insensitive.
+    - Password: at least 6 characters (up to 72 bytes for safe bcrypt).
+    - Confirm password: must match.
     """
     username = payload.username.strip()
-    email = payload.email.strip()
+    email = payload.email.strip().lower()
     password = payload.password
     confirm_password = payload.confirm_password
 
-    # 1. Validate Username: 3-20 chars, letters, numbers, underscore only
+    # 1. Validate Username
+    if not username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"field": "username", "message": "Username is required."}
+        )
     if not re.match(r"^[a-zA-Z0-9_]{3,20}$", username):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username must be between 3 and 20 characters and contain only letters, numbers, or underscores (_)."
+            detail={"field": "username", "message": "Username must be 3 to 20 characters (letters, numbers, and underscore only)."}
         )
 
     # 2. Validate Email Format
-    try:
-        validated_email_info = validate_email(email, check_deliverability=False)
-        email = validated_email_info.normalized
-    except EmailNotValidError as e:
+    if not email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid email address: {str(e)}"
+            detail={"field": "email", "message": "Email address is required."}
+        )
+    try:
+        validated_email_info = validate_email(email, check_deliverability=False)
+        email = validated_email_info.normalized.lower()
+    except EmailNotValidError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"field": "email", "message": "Please enter a valid email address."}
         )
 
-    # 3. Validate Password Rules
-    if len(password) < 8:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must be at least 8 characters long.")
-    if not re.search(r"[A-Z]", password):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must contain at least 1 uppercase letter (A-Z).")
-    if not re.search(r"[a-z]", password):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must contain at least 1 lowercase letter (a-z).")
-    if not re.search(r"[0-9]", password):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must contain at least 1 number (0-9).")
-    if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must contain at least 1 special character (!@#$%^&* etc.).")
+    # 3. Validate Password Rules (Simplified: at least 6 characters, max 72 bytes)
+    if not password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"field": "password", "message": "Password is required."}
+        )
+    if len(password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"field": "password", "message": "Password must be at least 6 characters."}
+        )
+    if len(password.encode("utf-8")) > 72:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"field": "password", "message": "Password cannot be longer than 72 characters."}
+        )
 
     # 4. Confirm Password Match
     if password != confirm_password:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password and confirm password do not match.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"field": "confirmPassword", "message": "Passwords do not match."}
+        )
 
     # 5. Duplicate checks
     if get_user_by_username(username):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username is already taken. Please choose another username.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"field": "username", "message": "Username is already taken. Please choose another username."}
+        )
     if get_user_by_email(email):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email is already registered. Please login or use a different email.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"field": "email", "message": "Email is already registered. Please login or use a different email."}
+        )
 
     # 6. Hash password with bcrypt
     salt = bcrypt.gensalt()
@@ -398,21 +439,29 @@ def signup(payload: SignupRequest):
 def login(payload: LoginRequest):
     """
     Authenticates an existing user and returns JWT with admin status.
+    Case-insensitive email matching.
     """
     email = payload.email.strip().lower()
     password = payload.password
 
-    # Find user in SQLite database
+    if not email or not password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please provide both email and password."
+        )
+
+    # Find user in SQLite database (case-insensitive)
     user = get_user_by_email(email)
 
-    # Check user existence and verify password with bcrypt
+    # Check user existence and verify password with bcrypt safely
     is_password_valid = False
     if user and user["password_hash"]:
         try:
-            is_password_valid = bcrypt.checkpw(
-                password.encode("utf-8"),
-                user["password_hash"].encode("utf-8")
-            )
+            if len(password.encode("utf-8")) <= 72:
+                is_password_valid = bcrypt.checkpw(
+                    password.encode("utf-8"),
+                    user["password_hash"].encode("utf-8")
+                )
         except Exception:
             is_password_valid = False
 
@@ -859,11 +908,12 @@ def get_food_item(
 # -------------------------------------------------------------
 class PlanRequest(BaseModel):
     budget: float = Field(default=5000.0, description="Total trip budget in INR")
-    days: Union[str, int, float] = Field(default=2, description="Duration: 'half', 1, 2, 3, or 4")
+    budgetBasis: Optional[str] = Field(default="group", description="'group' or 'person'")
+    days: Union[str, int, float] = Field(default=2, description="Duration: 'half' or 1 to 14")
     travellingWith: Optional[str] = Field(default="family", description="solo, friends, family, or seniors")
     interests: Optional[List[str]] = Field(default=[], description="User interests e.g. temple, beach, heritage")
     selectedPlaces: Optional[List[str]] = Field(default=[], description="List of place IDs chosen by user")
-    travellers: Optional[int] = Field(default=2, description="Number of travelers")
+    travellers: Optional[Union[Dict[str, Any], int]] = Field(default=None, description="Number or breakdown of travelers {adults, children, seniors}")
 
 @app.post("/api/plan", tags=["Planner"])
 def create_plan(
@@ -884,7 +934,8 @@ def create_plan(
         travelling_with=payload.travellingWith or "family",
         interests=payload.interests or [],
         selected_place_ids=payload.selectedPlaces or [],
-        travellers=payload.travellers or 2
+        travellers=payload.travellers if payload.travellers is not None else 2,
+        budget_basis=payload.budgetBasis or "group"
     )
     return itinerary
 
@@ -899,6 +950,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=500, description="User question (1-500 chars)")
     history: Optional[List[ChatHistoryItem]] = Field(default=[], description="Recent conversation turns (up to 8)")
     trip: Optional[dict] = Field(default=None, description="Optional current trip state from localStorage")
+    language: Optional[str] = Field(default="en", description="'en' or 'ta'")
 
 # In-memory rate limiting dictionary: user_id -> list of unix timestamps
 CHAT_RATE_LIMITS = {}
@@ -925,7 +977,7 @@ def check_chat_rate_limit(user_id: int):
     user_times.append(now)
     CHAT_RATE_LIMITS[user_id] = user_times
 
-def build_solvane_system_prompt(context_block: str, trip_context: Optional[dict] = None) -> str:
+def build_solvane_system_prompt(context_block: str, trip_context: Optional[dict] = None, language: str = "en") -> str:
     """
     Builds the Solvane AI tourist guide system prompt with safety constraints,
     language behavior, and retrieved knowledge context.
@@ -944,15 +996,23 @@ def build_solvane_system_prompt(context_block: str, trip_context: Optional[dict]
             f"- Preferred interests: {', '.join(interests) if interests else 'General sightseeing'}\n"
         )
 
+    if (language or "").lower() == "ta":
+        lang_rule = """3. TAMIL LANGUAGE REQUIREMENT:
+   - The user has requested Tamil language mode. Respond in polite, natural Tamil using proper Tamil script (தமிழ் எழுத்துகளில்).
+   - Never use Tanglish (Tamil in English letters).
+   - Keep proper names like 'Solvane', currency amounts (e.g. ₹500), digits (0-9), and technical terms such as 'PDF' and 'Google Maps' as they are."""
+    else:
+        lang_rule = """3. LANGUAGE HANDLING:
+   - If the user writes in English, reply in friendly, helpful English.
+   - If the user writes in Tamil script (தமிழ்), reply in polite, natural Tamil script.
+   - If the user writes Tamil in Latin/English letters (Tanglish, e.g. "bus eppo varum", "anga enna paakkalam"), understand their question completely, but reply in clear, friendly English (never use Tanglish in your reply)."""
+
     return f"""You are "Solvane", a warm, friendly, and knowledgeable local tourist guide for Ramanathapuram district in Tamil Nadu, India (encompassing Rameswaram, Dhanushkodi, Pamban, Mandapam, Ramanathapuram town, and nearby coastal pilgrimage sites).
 
 STRICT OPERATING RULES:
 1. ONLY USE THE PROVIDED DATA: Answer ONLY using the facts present in the RETRIEVED DATA block below. If the data does not contain the answer, politely say you do not have verified information on that and suggest checking Google Maps or asking local guides upon arrival. Never invent or hallucinate timings, entry fees, phone numbers, addresses, or prices.
 2. UNVERIFIED NOTICES: If an attraction, hotel, or food stall in the data is marked as "UNVERIFIED", explicitly mention to the visitor that its details have not yet been officially verified and might vary locally.
-3. LANGUAGE HANDLING:
-   - If the user writes in English, reply in friendly, helpful English.
-   - If the user writes in Tamil script (தமிழ்), reply in polite, natural Tamil script.
-   - If the user writes Tamil in Latin/English letters (Tanglish, e.g. "bus eppo varum", "anga enna paakkalam"), understand their question completely, but reply in clear, friendly English (never use Tanglish in your reply).
+{lang_rule}
 4. CONCISE & HELPFUL ADVICE:
    - Keep replies concise and easy to read on mobile screens (under 150 words unless the user specifically asks for an extensive breakdown).
    - Use the user's trip context (budget, party size, days) when offering recommendations.
@@ -1011,7 +1071,7 @@ def chat_with_solvane(
     )
     
     # 6. Build system prompt
-    system_prompt = build_solvane_system_prompt(context_block, payload.trip)
+    system_prompt = build_solvane_system_prompt(context_block, payload.trip, payload.language or "en")
     
     # 7. Format conversation messages (trim history to last 8 turns)
     raw_history = (payload.history or [])[-8:]
@@ -1051,14 +1111,17 @@ def chat_with_solvane(
 # -------------------------------------------------------------
 class TripEnhanceDetails(BaseModel):
     budget: Optional[float] = 5000.0
+    budgetBasis: Optional[str] = "group"
     days: Optional[Union[str, int, float]] = 2
     travellingWith: Optional[str] = Field(default="family", description="solo, friends, family, or seniors")
     interests: Optional[List[str]] = Field(default=[], description="User interest categories")
+    travellers: Optional[Union[Dict[str, Any], int]] = None
 
 class PlanEnhanceRequest(BaseModel):
     plan: dict = Field(..., description="The plan object returned by /api/plan")
     trip: Optional[TripEnhanceDetails] = None
     force_refresh: Optional[bool] = Field(default=False, description="Whether to bypass SQLite cache")
+    language: Optional[str] = Field(default="en", description="'en' or 'ta'")
 
 # Rate limit for plan narration: 10 requests per 10 minutes per user
 PLAN_ENHANCE_RATE_LIMITS = {}
@@ -1079,7 +1142,7 @@ def check_enhance_rate_limit(user_id: int):
     user_times.append(now)
     PLAN_ENHANCE_RATE_LIMITS[user_id] = user_times
 
-def compute_plan_hash(plan: dict, trip: Optional[TripEnhanceDetails]) -> str:
+def compute_plan_hash(plan: dict, trip: Optional[TripEnhanceDetails], language: str = "en") -> str:
     """Computes a deterministic SHA-256 hash of the plan stops sequence and trip details."""
     simplified_days = []
     if isinstance(plan.get("days"), list):
@@ -1097,20 +1160,22 @@ def compute_plan_hash(plan: dict, trip: Optional[TripEnhanceDetails]) -> str:
 
     hash_payload = {
         "days": simplified_days,
-        "trip": trip_dict
+        "trip": trip_dict,
+        "language": (language or "en").lower().strip()
     }
     encoded = json.dumps(hash_payload, sort_keys=True).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
-def build_narration_prompt(plan: dict, trip: Optional[TripEnhanceDetails], place_db_map: dict) -> str:
+def build_narration_prompt(plan: dict, trip: Optional[TripEnhanceDetails], place_db_map: dict, language: str = "en") -> str:
     """
     Builds the AI system prompt strictly from database entries and validated trip metadata.
     Does NOT pass untrusted user-written free text.
     """
     group_type = (trip.travellingWith or "family").lower().strip() if trip else "family"
     interests_str = ", ".join(trip.interests) if (trip and trip.interests) else "General sightseeing"
-    cost_tier = plan.get("cost_estimates", {}).get("tier", "comfortable") if isinstance(plan.get("cost_estimates"), dict) else "comfortable"
-    budget_status = plan.get("cost_estimates", {}).get("status", "within budget") if isinstance(plan.get("cost_estimates"), dict) else "within budget"
+    budget_dict = plan.get("budget") if isinstance(plan.get("budget"), dict) else (plan.get("cost_estimates") if isinstance(plan.get("cost_estimates"), dict) else {})
+    cost_tier = budget_dict.get("tier_used") or budget_dict.get("tier") or "comfortable"
+    budget_status = budget_dict.get("status") or "within budget"
 
     # Assemble trusted place context for stops in the itinerary
     stop_context_lines = []
@@ -1154,6 +1219,21 @@ def build_narration_prompt(plan: dict, trip: Optional[TripEnhanceDetails], place
         if has_dhanushkodi else ""
     )
 
+    lang_code = (language or "en").lower().strip()
+    if lang_code == "ta":
+        lang_instruction = (
+            "4. TAMIL LANGUAGE REQUIREMENT:\n"
+            "   - Write all JSON text values (overview, day summary, why_visit, local_tip, packing_tips, safety_notes, budget_advice) in polite, natural Tamil using Tamil script (தமிழ் எழுத்துகளில்).\n"
+            "   - Do NOT use Tanglish (Tamil written in English letters).\n"
+            "   - Keep proper names like 'Solvane', digits (0-9), amounts, and ₹ symbol as standard."
+        )
+    else:
+        lang_instruction = (
+            "4. CONCISE & PLAIN ENGLISH:\n"
+            "   - Keep every sentence crisp, warm, and in natural, friendly English.\n"
+            "   - Do NOT use Tanglish."
+        )
+
     return f"""You are "Solvane", a warm, knowledgeable, and practical local tourist guide for Ramanathapuram district in Tamil Nadu, India.
 
 TASK:
@@ -1167,9 +1247,7 @@ OPERATING GUIDELINES:
    - Travelling party: {group_type} (tailor pacing, advice, and tips specifically for {group_type}).
    - Budget tier: {cost_tier} ({budget_status}).
    - Interests: {interests_str}.{dhanushkodi_clause}
-4. CONCISE & PLAIN ENGLISH:
-   - Keep every sentence crisp, warm, and in natural, friendly English.
-   - Do NOT use Tanglish.
+{lang_instruction}
 5. OUTPUT FORMAT: Return ONLY a valid JSON object matching the exact structure below. Do not output markdown backticks, explanations, or commentary.
 
 ITINERARY SEQUENCE:
@@ -1237,13 +1315,20 @@ def parse_and_validate_narration(raw_text: str, plan_days: list, valid_place_ids
     if isinstance(ai_days, list):
         for d in ai_days:
             if isinstance(d, dict) and "day" in d:
-                ai_days_map[d["day"]] = d
+                try:
+                    ai_days_map[int(d["day"])] = d
+                except (ValueError, TypeError):
+                    ai_days_map[d["day"]] = d
 
     sanitized_days = []
     for p_day in plan_days:
         day_num = p_day.get("day", 1)
         plan_stops = p_day.get("stops", [])
-        ai_day = ai_days_map.get(day_num, {})
+        try:
+            day_num_int = int(day_num)
+        except (ValueError, TypeError):
+            day_num_int = day_num
+        ai_day = ai_days_map.get(day_num_int, {}) or ai_days_map.get(day_num, {}) or ai_days_map.get(str(day_num), {})
 
         day_summary = str(ai_day.get("summary", "")).strip()[:300]
         if not day_summary:
@@ -1252,15 +1337,15 @@ def parse_and_validate_narration(raw_text: str, plan_days: list, valid_place_ids
         ai_stops_map = {}
         if isinstance(ai_day.get("stops"), list):
             for s in ai_day["stops"]:
-                if isinstance(s, dict) and s.get("place_id") in valid_place_ids:
-                    ai_stops_map[s["place_id"]] = s
+                if isinstance(s, dict) and s.get("place_id"):
+                    ai_stops_map[str(s["place_id"]).strip().lower()] = s
 
         sanitized_stops = []
         for stop in plan_stops:
             pid = stop.get("place_id")
             if not pid or pid not in valid_place_ids:
                 continue
-            ai_stop = ai_stops_map.get(pid, {})
+            ai_stop = ai_stops_map.get(pid.strip().lower(), {})
             why_visit = str(ai_stop.get("why_visit", "")).strip()[:250]
             local_tip = str(ai_stop.get("local_tip", "")).strip()[:250]
 
@@ -1340,21 +1425,21 @@ def enhance_plan_narration(
         )
 
     plan_days = plan["days"]
-    if len(plan_days) == 0 or len(plan_days) > 10:
+    if len(plan_days) == 0 or len(plan_days) > 14:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Plan days count must be between 1 and 10."
+            detail="Plan days count must be between 1 and 14."
         )
 
     # 2. Extract and validate all place_ids against SQLite database
     all_place_ids = []
     for d in plan_days:
-        if not isinstance(d, dict) or not isinstance(d.get("stops"), list):
+        if not isinstance(d, dict) or not isinstance(d.get("stops", []), list):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid day structure in Day {d.get('day', '?')}."
             )
-        for s in d["stops"]:
+        for s in d.get("stops", []):
             pid = s.get("place_id")
             if not pid or not isinstance(pid, str):
                 raise HTTPException(
@@ -1363,10 +1448,10 @@ def enhance_plan_narration(
                 )
             all_place_ids.append(pid.strip())
 
-    if len(all_place_ids) == 0 or len(all_place_ids) > 35:
+    if len(all_place_ids) > 50:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Plan must contain between 1 and 35 total stops."
+            detail="Plan contains too many stops (maximum 50)."
         )
 
     # Verify every place exists in database
@@ -1382,7 +1467,7 @@ def enhance_plan_narration(
         place_db_map[pid] = db_place
 
     # 3. Compute plan hash and check SQLite cache
-    plan_hash = compute_plan_hash(plan, payload.trip)
+    plan_hash = compute_plan_hash(plan, payload.trip, payload.language or "en")
     if not payload.force_refresh:
         cached_narration = get_cached_plan_narration(user_id, plan_hash)
         if cached_narration:
@@ -1396,37 +1481,40 @@ def enhance_plan_narration(
     check_enhance_rate_limit(user_id)
 
     # 5. Build prompt strictly from trusted DB entries
-    system_prompt = build_narration_prompt(plan, payload.trip, place_db_map)
+    system_prompt = build_narration_prompt(plan, payload.trip, place_db_map, payload.language or "en")
     ai_messages = [
         {"role": "user", "content": "Please generate the JSON narration for this Ramanathapuram itinerary according to the instructions."}
     ]
 
     # 6. Call AI provider
     try:
+        print(f"[Plan Enhance] Invoking AI for user {user_id} ({len(all_place_ids)} stops)...", file=sys.stderr, flush=True)
         raw_reply = generate_reply(system_prompt, ai_messages)
+        print(f"[Plan Enhance] Successfully received AI response ({len(raw_reply)} characters).", file=sys.stderr, flush=True)
     except HTTPException:
         raise
     except ValueError as e:
-        print(f"Plan enhancement configuration error: {e}")
+        print(f"[Plan Enhance Configuration Error] {e}", file=sys.stderr, flush=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="AI service is not configured properly. Please contact the administrator."
+            detail=str(e)
         )
     except Exception as e:
-        print(f"Plan enhancement execution error: {type(e).__name__} - {str(e)[:150]}")
+        err_msg = str(e)
+        print(f"[Plan Enhance AI Error] {type(e).__name__}: {err_msg}", file=sys.stderr, flush=True)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="AI guide is currently unavailable. You can still use the standard itinerary."
+            detail=err_msg if err_msg else "AI guide is currently unavailable. You can still use the standard itinerary."
         )
 
     # 7. Safely parse and sanitize JSON
     try:
         narration = parse_and_validate_narration(raw_reply, plan_days, unique_place_ids)
     except Exception as e:
-        print(f"Failed to parse AI narration JSON: {e}")
+        print(f"[Plan Enhance Parse Error] Failed to parse AI narration JSON: {e}", file=sys.stderr, flush=True)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="AI response could not be parsed into the required format. Please retry."
+            detail=f"AI response could not be parsed: {str(e)}"
         )
 
     # 8. Save to SQLite cache
@@ -1437,6 +1525,296 @@ def enhance_plan_narration(
         "cached": False,
         "narration": narration
     }
+
+# -------------------------------------------------------------
+# SAVED PLANS (ITINERARIES): MODELS & ENDPOINTS
+# -------------------------------------------------------------
+class SavePlanRequest(BaseModel):
+    plan: dict = Field(..., description="The plan object returned by /api/plan")
+    trip: Optional[dict] = Field(default=None, description="Optional trip metadata (budget, days, travellingWith, interests)")
+    title: Optional[str] = Field(default=None, max_length=120, description="Optional user-provided title")
+    narration: Optional[dict] = Field(default=None, description="Optional AI narration data")
+
+@app.post("/api/saved-plans", tags=["Saved Plans"])
+def save_plan_endpoint(
+    payload: SavePlanRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Saves an itinerary to the user's account with auto or custom title.
+    Enforces a maximum of 20 saved plans per user.
+    Validates plan structure and ensures destination place_ids exist in the database.
+    """
+    user_id = current_user["user_id"]
+
+    # Limit check: 20 saved plans max
+    existing_count = count_user_saved_plans(user_id)
+    if existing_count >= 20:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You have reached the limit of 20 saved plans. Please delete an older trip to save a new one."
+        )
+
+    plan = payload.plan
+    if not isinstance(plan, dict) or not isinstance(plan.get("days"), list):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid plan format: missing days list."
+        )
+
+    plan_days = plan["days"]
+    if len(plan_days) == 0 or len(plan_days) > 14:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Plan days count must be between 1 and 14."
+        )
+
+    # Validate that all stops have place_ids that exist in SQLite
+    total_stops = 0
+    for d in plan_days:
+        if not isinstance(d, dict) or not isinstance(d.get("stops", []), list):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid day structure in Day {d.get('day', '?')}."
+            )
+        for s in d.get("stops", []):
+            pid = s.get("place_id")
+            if not pid or not isinstance(pid, str):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Every plan stop must contain a valid place_id."
+                )
+            if not get_place_by_id_db(pid.strip()):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Cannot save plan: destination '{pid}' does not exist."
+                )
+            total_stops += 1
+
+    if total_stops > 50:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Plan contains too many stops (maximum 50)."
+        )
+
+    # Determine auto-title if not provided
+    title = (payload.title or "").strip()
+    if not title:
+        days_num = len(plan_days)
+        group = (payload.trip.get("travellingWith") or "Family").capitalize() if isinstance(payload.trip, dict) else "Family"
+        budget_val = None
+        if isinstance(payload.trip, dict) and payload.trip.get("budget"):
+            budget_val = payload.trip.get("budget")
+        elif isinstance(plan.get("budget"), dict) and plan["budget"].get("total"):
+            budget_val = plan["budget"]["total"]
+        elif isinstance(plan.get("budget"), dict) and plan["budget"].get("user_budget"):
+            budget_val = plan["budget"]["user_budget"]
+
+        budget_str = f", ₹{int(budget_val):,}" if budget_val else ""
+        title = f"{days_num}-day {group} Trip{budget_str}"
+
+    plan_id = f"plan_{uuid.uuid4().hex[:12]}"
+    save_user_plan(
+        plan_id=plan_id,
+        user_id=user_id,
+        title=title,
+        trip=payload.trip or {},
+        plan=payload.plan,
+        narration=payload.narration
+    )
+
+    return {
+        "success": True,
+        "plan_id": plan_id,
+        "title": title,
+        "message": "Trip plan saved successfully."
+    }
+
+@app.get("/api/saved-plans", tags=["Saved Plans"])
+def get_saved_plans_endpoint(current_user: dict = Depends(get_current_user)):
+    """
+    Returns all saved itineraries for the authenticated user, newest first.
+    """
+    user_id = current_user["user_id"]
+    return get_user_saved_plans(user_id)
+
+@app.get("/api/saved-plans/{plan_id}", tags=["Saved Plans"])
+def get_saved_plan_detail_endpoint(
+    plan_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Returns a specific saved plan by ID. Only accessible if it belongs to the authenticated user.
+    """
+    user_id = current_user["user_id"]
+    saved_plan = get_user_saved_plan_by_id(plan_id, user_id)
+    if not saved_plan:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Saved plan not found."
+        )
+    return saved_plan
+
+@app.delete("/api/saved-plans/{plan_id}", tags=["Saved Plans"])
+def delete_saved_plan_endpoint(
+    plan_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Deletes a saved plan. Only accessible if it belongs to the authenticated user.
+    """
+    user_id = current_user["user_id"]
+    deleted = delete_user_saved_plan_by_id(plan_id, user_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Saved plan not found."
+        )
+    return {
+        "success": True,
+        "message": "Saved plan deleted successfully."
+    }
+
+# -------------------------------------------------------------
+# ADMIN DASHBOARD & AUDIT LOGS ENDPOINTS (ADMIN ONLY)
+# -------------------------------------------------------------
+@app.get("/api/admin/stats", tags=["Admin Dashboard"])
+def get_admin_stats_endpoint(admin_user: dict = Depends(get_current_admin_user)):
+    """
+    Returns system-wide metrics: total users, new in 7d, logins, 24h failed logins, saved plans, chat questions.
+    Admin privilege required.
+    """
+    return get_admin_dashboard_stats()
+
+@app.get("/api/admin/users", tags=["Admin Dashboard"])
+def get_admin_users_endpoint(
+    page: int = Query(1, ge=1),
+    limit: int = Query(15, ge=1, le=100),
+    search: Optional[str] = Query(None),
+    admin_user: dict = Depends(get_current_admin_user)
+):
+    """
+    Returns paginated user list with search support and login counts.
+    Never exposes password hashes. Admin privilege required.
+    """
+    users, total = get_admin_users_list(page=page, limit=limit, search=search)
+    total_pages = math.ceil(total / limit) if total > 0 else 1
+    return {
+        "users": users,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages
+    }
+
+@app.get("/api/admin/login-logs", tags=["Admin Dashboard"])
+def get_admin_login_logs_endpoint(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    success: Optional[bool] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    admin_user: dict = Depends(get_current_admin_user)
+):
+    """
+    Returns paginated login audit logs with success and date filtering.
+    Admin privilege required.
+    """
+    logs, total = get_admin_login_logs_list(
+        page=page,
+        limit=limit,
+        success=success,
+        start_date=start_date,
+        end_date=end_date
+    )
+    total_pages = math.ceil(total / limit) if total > 0 else 1
+    return {
+        "logs": logs,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages
+    }
+
+@app.get("/api/admin/chat-logs", tags=["Admin Dashboard"])
+def get_admin_chat_logs_endpoint(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    admin_user: dict = Depends(get_current_admin_user)
+):
+    """
+    Returns paginated chat questions asked to Solvane guide.
+    Admin privilege required.
+    """
+    questions, total = get_admin_chat_logs_list(page=page, limit=limit)
+    total_pages = math.ceil(total / limit) if total > 0 else 1
+    return {
+        "questions": questions,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages
+    }
+
+@app.get("/api/admin/export/users.csv", tags=["Admin Dashboard"])
+def export_users_csv(admin_user: dict = Depends(get_current_admin_user)):
+    """
+    Exports all registered users as a CSV file.
+    Strictly excludes password hashes. Admin privilege required.
+    """
+    users = get_admin_all_users_for_export()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["User ID", "Username", "Email", "Registered At", "Last Login", "Is Admin", "Total Logins"])
+    for u in users:
+        writer.writerow([
+            u["user_id"],
+            u["username"],
+            u["email"],
+            u["created_at"],
+            u["last_login"],
+            u["is_admin"],
+            u["login_count"]
+        ])
+
+    csv_data = output.getvalue()
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=solvane-users.csv"
+        }
+    )
+
+@app.get("/api/admin/export/login-logs.csv", tags=["Admin Dashboard"])
+def export_login_logs_csv(admin_user: dict = Depends(get_current_admin_user)):
+    """
+    Exports login audit logs as a CSV file.
+    Admin privilege required.
+    """
+    logs = get_admin_all_login_logs_for_export()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Log ID", "User ID", "Username", "Email Attempted", "Status", "Timestamp"])
+    for l in logs:
+        writer.writerow([
+            l["log_id"],
+            l["user_id"],
+            l["username"],
+            l["email_attempted"],
+            l["success"],
+            l["login_time"]
+        ])
+
+    csv_data = output.getvalue()
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=solvane-login-logs.csv"
+        }
+    )
+
 
 if __name__ == "__main__":
     import uvicorn

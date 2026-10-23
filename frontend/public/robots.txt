@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /my-trips
+Disallow: /chat
+
+Sitemap: https://solvane.in/sitemap.xml

@@ -7,8 +7,9 @@ _backend_dir = Path(__file__).resolve().parent
 load_dotenv(dotenv_path=_backend_dir / ".env")
 load_dotenv()  # Fallback to CWD if present
 
-# Database path (defaults to solvane.db in backend folder)
-DATABASE_PATH = os.getenv("DATABASE_PATH", "solvane.db")
+# Database path: always absolute based on backend directory so solvane.db is consistent regardless of CWD
+_db_env = os.getenv("DATABASE_PATH", "solvane.db")
+DATABASE_PATH = str(Path(_db_env) if os.path.isabs(_db_env) else (_backend_dir / _db_env).resolve())
 
 # Allowed frontend origin for CORS (defaults to Vite dev server)
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
@@ -30,33 +31,49 @@ ADMIN_EMAILS = [
 ]
 
 # =============================================================================
-# COST ESTIMATION CONFIGURATION (Rough estimates - must be verified by user)
-# These represent baseline per-person-per-day costs in INR across three travel tiers.
-# Local transport includes fixed daily local auto/bus plus distance-based rates.
+# COST ESTIMATION CONFIGURATION (Rough local estimates - please verify with local vendors)
+# All monetary figures are in Indian Rupees (INR).
 # =============================================================================
-COST_ESTIMATES = {
-    # 1. Budget Tier: Dharamshalas, budget lodges, local messes, town buses / shared autos
+
+# Comfort Level Selection Thresholds (Daily budget per person in INR):
+# Used to determine whether itinerary planning should assume budget, comfortable, or premium tier.
+TIER_THRESHOLDS = {
+    "budget_max": 1400,        # Under ₹1,400 per person/day -> Budget Tier
+    "comfortable_max": 3200,   # ₹1,400 to ₹3,200 per person/day -> Comfortable Tier
+    # Above ₹3,200 per person/day -> Premium Tier
+}
+
+# Per-tier room, meal, and vehicle rates:
+COST_RATES = {
+    # 1. Budget Tier: Dharamshalas / basic lodges, South Indian messes, local autos
     "budget": {
-        "stay_per_person_per_night": 450,       # shared double / dharamshala room
-        "food_per_person_per_day": 350,         # local South Indian vegetarian meals
-        "transport_base_per_person_per_day": 120, # municipal bus & shared auto baseline
+        "stay_per_room_per_night": 900,         # Basic double room / dharamshala rate per night
+        "food_per_adult_per_day": 350,          # Local mess & South Indian meals per adult/day
+        "transport_per_vehicle_per_day": 1200,  # Standard local auto-rickshaw hire per vehicle/day
     },
-    # 2. Comfortable Tier: Standard AC hotels, popular family restaurants, private autorickshaws / partial cabs
+    # 2. Comfortable Tier: Standard 2-3 star AC hotels, AC family restaurants, dedicated sedan cab
     "comfortable": {
-        "stay_per_person_per_night": 1100,      # standard 2-3 star hotel room split
-        "food_per_person_per_day": 650,         # AC dining, variety meals & snacks
-        "transport_base_per_person_per_day": 280, # dedicated autos & town transit
+        "stay_per_room_per_night": 2200,        # Standard AC hotel double room rate per night
+        "food_per_adult_per_day": 650,          # AC dining, multi-cuisine meals & snacks per adult/day
+        "transport_per_vehicle_per_day": 2400,  # Dedicated sedan cab daily hire per vehicle/day
     },
-    # 3. Premium Tier: Seafront resorts, star hotels, seafood/fine dining, dedicated private cab
+    # 3. Premium Tier: Seafront resorts, star hotels, fine seafood dining, private SUV cab
     "premium": {
-        "stay_per_person_per_night": 2400,      # resort / luxury hotel room split
-        "food_per_person_per_day": 1200,        # multi-cuisine & coastal seafood dining
-        "transport_base_per_person_per_day": 550, # private AC car daily hire base
+        "stay_per_room_per_night": 4800,        # Seafront resort / luxury hotel AC room rate per night
+        "food_per_adult_per_day": 1200,         # Premium multi-cuisine & coastal seafood dining per adult/day
+        "transport_per_vehicle_per_day": 3800,  # Private SUV (Innova / Ertiga) daily hire per vehicle/day
     }
 }
 
-# Distance-based local transit rate per km per person (for inter-zone cab/auto transit across Ramanathapuram)
-TRANSPORT_COST_PER_KM_PER_PERSON = 7.5  # Approx ₹7.50 / km / person (e.g. ₹15/km for 2 travellers)
+# Child rate multiplier for meals (children under 12 consume ~60% of adult food cost)
+CHILD_FOOD_RATIO = 0.60
+
+# Distance-based travel allowance rate per vehicle per km (for longer inter-zone travel across Ramanathapuram)
+TRANSPORT_PER_VEHICLE_PER_KM = 14.0  # Approx ₹14/km for sedan/cab
+
+# Backward compatibility aliases
+COST_ESTIMATES = COST_RATES
+TRANSPORT_COST_PER_KM_PER_PERSON = 7.5
 
 # AI Chat Guide Configuration
 AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini").lower()

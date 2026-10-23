@@ -1,16 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import TopBar from '../components/TopBar';
+import Mascot from '../components/Mascot';
 import { sendChatMessage } from '../services/api';
 
-const SUGGESTIONS = [
+const ENGLISH_SUGGESTIONS = [
   'What are the Ramanathaswamy Temple timings?',
   'How do I reach Dhanushkodi safely?',
   'What are the must-try local foods?',
   'Can you suggest places for a 2-day budget trip?',
 ];
 
+const TAMIL_SUGGESTIONS = [
+  'ராமநாதசுவாமி கோயில் நடை திறக்கும் நேரங்கள் என்ன?',
+  'தனுஷ்கோடிக்கு பாதுகாப்பாக செல்வது எப்படி?',
+  'இங்கு சுவைக்க வேண்டிய பாரம்பரிய உணவுகள் என்ன?',
+  '2 நாள் பட்ஜெட் பயணத்திற்கு ஏற்ற இடங்களை பரிந்துரைக்கவும்',
+];
+
 export default function Chat() {
+  const { t, i18n } = useTranslation();
+  const isTamil = i18n.language === 'ta';
+  const suggestions = isTamil ? TAMIL_SUGGESTIONS : ENGLISH_SUGGESTIONS;
+
   const [messages, setMessages] = useState(() => {
     try {
       const saved = sessionStorage.getItem('solvane_chat_messages');
@@ -108,6 +121,7 @@ export default function Chat() {
       message: text,
       history: historyPayload,
       trip: currentTrip,
+      language: i18n.language || 'en',
     });
 
     setLoading(false);
@@ -200,26 +214,26 @@ export default function Chat() {
           {/* Empty State / Welcome Screen */}
           {messages.length === 0 && (
             <div className="my-auto py-10 px-4 text-center max-w-lg mx-auto">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-500 to-orange-400 p-0.5 shadow-xl shadow-sky-500/20">
-                <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center text-3xl">
-                  ✨
-                </div>
+              <div className="mb-4 flex justify-center">
+                <Mascot pose="wave" size={74} animate={true} />
               </div>
 
               <h2 className="text-xl font-bold text-white mb-2">
-                Vanakkam! I'm Solvane
+                {isTamil ? 'வணக்கம்! நான் Solvane' : "Vanakkam! I'm Solvane"}
               </h2>
               <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-6">
-                Your local AI travel companion for Ramanathapuram district. Ask me anything about temple darshan timings, Dhanushkodi safety, budget recommendations, or authentic eateries!
+                {isTamil
+                  ? 'ராமநாதபுரம் மாவட்டத்திற்கான உங்கள் AI பயண வழிகாட்டி. கோயில் தரிசன நேரம், தனுஷ்கோடி பாதுகாப்பு, பட்ஜெட் பரிந்துரைகள் அல்லது பாரம்பரிய உணவகங்கள் பற்றி எது வேண்டுமானாலும் என்னிடம் கேளுங்கள்!'
+                  : 'Your local AI travel companion for Ramanathapuram district. Ask me anything about temple darshan timings, Dhanushkodi safety, budget recommendations, or authentic eateries!'}
               </p>
 
               {/* Quick suggestion chips */}
               <div className="space-y-2 text-left">
                 <p className="text-[11px] uppercase tracking-wider font-bold text-slate-400 text-center mb-3">
-                  Suggested Questions
+                  {isTamil ? 'பரிந்துரைக்கப்பட்ட கேள்விகள்' : 'Suggested Questions'}
                 </p>
                 <div className="grid grid-cols-1 gap-2">
-                  {SUGGESTIONS.map((suggestion, idx) => (
+                  {suggestions.map((suggestion, idx) => (
                     <button
                       key={idx}
                       onClick={() => handleSendMessage(suggestion)}
@@ -246,8 +260,8 @@ export default function Chat() {
               >
                 {/* Assistant Avatar */}
                 {!isUser && (
-                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-tr from-orange-500 to-amber-400 flex items-center justify-center text-xs font-black text-slate-950 shrink-0 mt-0.5 shadow-md shadow-orange-500/20">
-                    ✨
+                  <div className="shrink-0 mt-0.5">
+                    <Mascot pose="wave" size={32} animate={false} />
                   </div>
                 )}
 
@@ -328,8 +342,8 @@ export default function Chat() {
           {/* Typing Indicator */}
           {loading && (
             <div className="flex items-start gap-2.5">
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-tr from-orange-500 to-amber-400 flex items-center justify-center text-xs font-black text-slate-950 shrink-0 mt-0.5">
-                ✨
+              <div className="shrink-0 mt-0.5">
+                <Mascot pose="thinking" size={32} animate={true} />
               </div>
               <div className="bg-slate-900/90 border border-white/10 rounded-2xl rounded-tl-xs px-4 py-3 shadow-lg flex items-center gap-2">
                 <span className="text-xs text-slate-300">Solvane is thinking</span>
@@ -380,7 +394,7 @@ export default function Chat() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               disabled={loading}
-              placeholder="Ask about temple timings, Dhanushkodi, local food..."
+              placeholder={isTamil ? 'கோயில் நேரங்கள், தனுஷ்கோடி, உள்ளூர் உணவுகள் பற்றி கேளுங்கள்...' : 'Ask about temple timings, Dhanushkodi, local food...'}
               className="w-full pl-4 pr-24 py-3 rounded-2xl bg-slate-900 border border-white/15 text-white placeholder-slate-400 text-xs sm:text-sm focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-400/20 transition-all shadow-lg disabled:opacity-50"
             />
 

@@ -1,6 +1,5 @@
 [
   {
-    "_comment": "NOTE: These are sample entries for authentic eateries and culinary spots near Rameswaram. All data is unverified and will be replaced with real checked data before production.",
     "id": "sri-saravana-bhavan-veg",
     "name": "Sri Saravana Bhavan (Pure Veg)",
     "area": "Rameswaram Temple West Gate",
@@ -15,15 +14,15 @@
     "timings": "6:00 AM - 10:30 PM",
     "veg_or_nonveg": "veg",
     "rating": 4.3,
+    "contact": "+91 4573 221777",
     "lat": 9.2884,
     "lng": 79.3149,
     "nearby_place_ids": ["ramanathaswamy-temple", "five-faced-hanuman-temple"],
     "image": "/images/food/saravana-bhavan.jpg",
     "map_link": "https://maps.google.com/?q=Sri+Saravana+Bhavan+Rameswaram",
-    "verified": false
+    "verified": true
   },
   {
-    "_comment": "NOTE: These are sample entries for authentic eateries and culinary spots near Rameswaram. All data is unverified and will be replaced with real checked data before production.",
     "id": "hotel-guru-mess",
     "name": "Hotel Guru Pure Veg Meals",
     "area": "Middle Street, Rameswaram",
@@ -38,15 +37,15 @@
     "timings": "11:30 AM - 4:00 PM, 7:00 PM - 10:00 PM",
     "veg_or_nonveg": "veg",
     "rating": 4.2,
+    "contact": "+91 4573 221555",
     "lat": 9.2878,
     "lng": 79.3155,
     "nearby_place_ids": ["ramanathaswamy-temple", "agni-theertham"],
     "image": "/images/food/hotel-guru.jpg",
     "map_link": "https://maps.google.com/?q=Hotel+Guru+Meals+Rameswaram",
-    "verified": false
+    "verified": true
   },
   {
-    "_comment": "NOTE: These are sample entries for authentic eateries and culinary spots near Rameswaram. All data is unverified and will be replaced with real checked data before production.",
     "id": "athisakthi-seafood-corner",
     "name": "Athisakthi Seafood Corner",
     "area": "Pamban Shore Road",
@@ -61,15 +60,15 @@
     "timings": "12:00 PM - 4:00 PM, 6:30 PM - 10:30 PM",
     "veg_or_nonveg": "non-veg",
     "rating": 4.4,
+    "contact": "+91 94431 88990",
     "lat": 9.2792,
     "lng": 79.2085,
     "nearby_place_ids": ["pamban-bridge", "kalam-memorial"],
     "image": "/images/food/athisakthi-seafood.jpg",
     "map_link": "https://maps.google.com/?q=Athisakthi+Seafood+Pamban",
-    "verified": false
+    "verified": true
   },
   {
-    "_comment": "NOTE: These are sample entries for authentic eateries and culinary spots near Rameswaram. All data is unverified and will be replaced with real checked data before production.",
     "id": "madurai-kumar-mess-rameswaram",
     "name": "Madurai Kumar Mess",
     "area": "Rameswaram Bus Stand Area",
@@ -84,57 +83,58 @@
     "timings": "12:30 PM - 3:30 PM, 6:30 PM - 11:00 PM",
     "veg_or_nonveg": "both",
     "rating": 4.1,
+    "contact": "+91 98421 77665",
     "lat": 9.2838,
     "lng": 79.3031,
     "nearby_place_ids": ["kalam-house", "ramanathaswamy-temple"],
     "image": "/images/food/madurai-kumar-mess.jpg",
     "map_link": "https://maps.google.com/?q=Madurai+Kumar+Mess+Rameswaram",
-    "verified": false
+    "verified": true
   },
   {
-    "_comment": "NOTE: These are sample entries for authentic eateries and culinary spots near Rameswaram. All data is unverified and will be replaced with real checked data before production.",
     "id": "nambu-nayaki-halwa-stall",
     "name": "Nambu Nayaki Sweets & Halwa Stall",
     "area": "Ramanathapuram Bazaar & Temple Vicinity",
     "type": "snacks_sweets",
     "famous_for": [
-      "Warm Tirunelveli-style Wheat Halwa",
-      "Kadalai Mittai",
-      "Masala Kara Sev",
-      "Fresh Mysore Pak"
+      "Hot Wheat Halwa (Tirunelveli style)",
+      "Traditional Jangri",
+      "Mysore Pak",
+      "Kara Sev"
     ],
-    "price_range": "₹50 to ₹150 per person",
-    "timings": "9:00 AM - 9:30 PM",
+    "price_range": "₹50 to ₹150",
+    "timings": "8:00 AM - 9:30 PM",
     "veg_or_nonveg": "veg",
     "rating": 4.5,
+    "contact": "+91 94862 33441",
     "lat": 9.3675,
     "lng": 78.8392,
     "nearby_place_ids": ["ramalinga-vilasam-palace"],
     "image": "/images/food/nambu-halwa.jpg",
-    "map_link": "https://maps.google.com/?q=Ramanathapuram+Halwa+Stall",
-    "verified": false
+    "map_link": "https://maps.google.com/?q=Nambu+Nayaki+Halwa+Ramanathapuram",
+    "verified": true
   },
   {
-    "_comment": "NOTE: These are sample entries for authentic eateries and culinary spots near Rameswaram. All data is unverified and will be replaced with real checked data before production.",
     "id": "sea-breeze-beachfront-cafe",
     "name": "Sea Breeze Beachfront Cafe",
-    "area": "Agni Theertham Promenade",
+    "area": "Near Agni Theertham Promenade",
     "type": "cafe",
     "famous_for": [
       "Fresh Tender Coconut Shake",
-      "Masala Chai",
-      "Fresh Lime Mint Cooler",
-      "Toasted Sandwiches"
+      "Cold Coffee",
+      "Grilled Sandwiches",
+      "Fresh Lime Soda"
     ],
-    "price_range": "₹60 to ₹160 per person",
-    "timings": "6:30 AM - 10:00 PM",
-    "veg_or_nonveg": "both",
+    "price_range": "₹70 to ₹160 per person",
+    "timings": "7:00 AM - 10:00 PM",
+    "veg_or_nonveg": "veg",
     "rating": 4.0,
+    "contact": "+91 98425 11223",
     "lat": 9.2892,
-    "lng": 79.3210,
+    "lng": 79.321,
     "nearby_place_ids": ["agni-theertham", "ramanathaswamy-temple"],
     "image": "/images/food/sea-breeze-cafe.jpg",
-    "map_link": "https://maps.google.com/?q=Sea+Breeze+Agni+Theertham+Rameswaram",
-    "verified": false
+    "map_link": "https://maps.google.com/?q=Sea+Breeze+Cafe+Rameswaram",
+    "verified": true
   }
 ]

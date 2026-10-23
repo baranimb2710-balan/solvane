@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useTrip } from '../context/TripContext';
-import { generatePlan, enhancePlan, clearSession } from '../services/api';
+import { generatePlan, enhancePlan, savePlan, clearSession } from '../services/api';
+import { generatePlanPdf } from '../utils/generatePlanPdf';
 import TopBar from '../components/TopBar';
 import FloatingChatButton from '../components/FloatingChatButton';
+import Mascot from '../components/Mascot';
 
 /**
  * Solvane - Rule-Based Plan Suggestion Page ("/plan")
@@ -25,6 +28,8 @@ import FloatingChatButton from '../components/FloatingChatButton';
  */
 
 export default function Plan() {
+  const { t, i18n } = useTranslation();
+  const isTamil = i18n.language === 'ta';
   const navigate = useNavigate();
   const { trip, updateTrip } = useTrip();
 
@@ -39,11 +44,50 @@ export default function Plan() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState(null);
 
+  // Saved plan state
+  const [isSaved, setIsSaved] = useState(false);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [saveToast, setSaveToast] = useState('');
+  const [saveError, setSaveError] = useState('');
+
+  // Expandable "How we estimated this" explainer state
+  const [showEstimatesExplainer, setShowEstimatesExplainer] = useState(false);
+
   // Track failed thumbnail images
   const [failedThumbnails, setFailedThumbnails] = useState({});
 
   const handleImageError = (placeId) => {
     setFailedThumbnails((prev) => ({ ...prev, [placeId]: true }));
+  };
+
+  const handleSavePlan = async () => {
+    if (!planData || isSaved || saveLoading) return;
+    setSaveLoading(true);
+    setSaveError('');
+    setSaveToast('');
+    const res = await savePlan({
+      plan: planData,
+      trip,
+      narration: aiNarration,
+    });
+    setSaveLoading(false);
+    if (res.success) {
+      setIsSaved(true);
+      setSaveToast(isTamil ? 'பயணத் திட்டம் சேமிக்கப்பட்டது!' : 'Itinerary saved to My Trips!');
+      setTimeout(() => setSaveToast(''), 4000);
+    } else {
+      setSaveError(res.error || (isTamil ? 'திட்டத்தைச் சேமிக்க முடியவில்லை.' : 'Failed to save trip plan.'));
+      setTimeout(() => setSaveError(''), 5000);
+    }
+  };
+
+  const handleDownloadPdf = () => {
+    if (!planData) return;
+    generatePlanPdf({
+      plan: planData,
+      trip,
+      narration: aiNarration,
+    });
   };
 
   const handleLogout = () => {
@@ -60,12 +104,13 @@ export default function Plan() {
       plan: planData,
       trip,
       forceRefresh,
+      language: i18n.language || 'en',
     });
     setAiLoading(false);
     if (res.success && res.data?.narration) {
       setAiNarration(res.data.narration);
     } else {
-      setAiError(res.error || 'AI tips are unavailable right now.');
+      setAiError(res.error || (isTamil ? 'AI குறிப்புகள் தற்போது கிடைக்கவில்லை.' : 'AI tips are unavailable right now.'));
     }
   };
 
@@ -89,16 +134,20 @@ export default function Plan() {
     setError('');
     setAiNarration(null);
     setAiError(null);
+    setIsSaved(false);
+    setSaveToast('');
+    setSaveError('');
 
     const daysToUse = overrideDays !== null ? overrideDays : (trip.days || 2);
 
     const payload = {
       budget: Number(trip.budget),
+      budgetBasis: trip.budgetBasis || 'group',
       days: daysToUse,
       travellingWith: trip.travellingWith || 'family',
       interests: Array.isArray(trip.interests) ? trip.interests : [],
       selectedPlaces: Array.isArray(trip.selectedPlaces) ? trip.selectedPlaces : [],
-      travellers: 2
+      travellers: trip.travellers || { adults: 2, children: 0, seniors: 0 }
     };
 
     const res = await generatePlan(payload);
@@ -121,14 +170,14 @@ export default function Plan() {
     }
   }, []);
 
-  // Handler for "Add a day" button
+  // Handler for "Add a day" button (allows up to 14 days)
   const handleAddDay = () => {
     let nextDays = 2;
     if (trip.days === 'half') {
       nextDays = 1;
     } else {
       const current = Number(trip.days) || 1;
-      nextDays = Math.min(4, current + 1);
+      nextDays = Math.min(14, current + 1);
     }
     updateTrip({ days: nextDays });
     fetchPlan(nextDays);
@@ -219,7 +268,12 @@ export default function Plan() {
             {/* Budget Chip */}
             <span className="bg-slate-950/80 border border-white/15 px-3 py-1.5 rounded-2xl text-xs font-semibold text-slate-200 flex items-center gap-1.5">
               <span>💰</span>
-              <span>₹{Number(trip.budget || 5000).toLocaleString('en-IN')}</span>
+              <span>
+                ₹{Number(trip.budget || 5000).toLocaleString('en-IN')}
+                <span className="text-[10px] text-slate-400 font-normal ml-1">
+                  ({trip.budgetBasis === 'person' ? 'Per Person' : 'Whole Group'})
+                </span>
+              </span>
             </span>
 
             {/* Days Chip */}
@@ -228,11 +282,36 @@ export default function Plan() {
               <span>{trip.days === 'half' ? 'Half Day' : `${trip.days} Days`}</span>
             </span>
 
-            {/* Party Chip */}
-            <span className="bg-slate-950/80 border border-white/15 px-3 py-1.5 rounded-2xl text-xs font-semibold text-slate-200 flex items-center gap-1.5 capitalize">
-              <span>👥</span>
-              <span>{trip.travellingWith || 'Family'}</span>
-            </span>
+            {/* Party & Travellers Chip */}
+            {(() => {
+              const party = trip.travellingWith || 'family';
+              if (party === 'solo') {
+                return (
+                  <span className="bg-slate-950/80 border border-white/15 px-3 py-1.5 rounded-2xl text-xs font-semibold text-slate-200 flex items-center gap-1.5 capitalize">
+                    <span>🎒</span>
+                    <span>Solo (1 person)</span>
+                  </span>
+                );
+              }
+              const trav = trip.travellers || { adults: 2, children: 0, seniors: 0 };
+              const adults = Number(trav.adults) || 2;
+              const children = Number(trav.children) || 0;
+              const seniors = Number(trav.seniors) || 0;
+              const total = adults + children;
+              return (
+                <span className="bg-slate-950/80 border border-white/15 px-3 py-1.5 rounded-2xl text-xs font-semibold text-slate-200 flex items-center gap-1.5 capitalize">
+                  <span>👥</span>
+                  <span>
+                    {party}, {total} {total === 1 ? 'person' : 'people'}
+                    <span className="text-[10px] text-slate-400 font-normal lowercase ml-1">
+                      ({adults} {adults === 1 ? 'adult' : 'adults'}
+                      {children > 0 ? `, ${children} ${children === 1 ? 'child' : 'children'}` : ''}
+                      {seniors > 0 ? `, ${seniors} ${seniors === 1 ? 'senior' : 'seniors'}` : ''})
+                    </span>
+                  </span>
+                </span>
+              );
+            })()}
 
             {/* Interests Chips */}
             {Array.isArray(trip.interests) && trip.interests.length > 0 && (
@@ -249,13 +328,13 @@ export default function Plan() {
               onClick={() => navigate('/budget')}
               className="px-3.5 py-1.5 rounded-full text-xs font-semibold text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-all cursor-pointer"
             >
-              Edit budget & time
+              {t('plan.editBudgetAndTime', 'Edit budget & time')}
             </button>
             <button
               onClick={() => navigate('/destinations')}
               className="px-3.5 py-1.5 rounded-full text-xs font-semibold text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-all cursor-pointer"
             >
-              Change places
+              {t('plan.changeDestinations', 'Change places')}
             </button>
             <button
               onClick={() => fetchPlan()}
@@ -263,7 +342,7 @@ export default function Plan() {
               className="px-4 py-1.5 rounded-full text-xs font-bold text-white bg-gradient-to-r from-orange-500 to-amber-500 hover:shadow-md hover:shadow-orange-500/30 transition-all cursor-pointer flex items-center gap-1.5"
             >
               <span>🔄</span>
-              <span>Regenerate</span>
+              <span>{t('plan.regeneratePlan', 'Regenerate')}</span>
             </button>
 
             {/* AI Tips Button */}
@@ -273,14 +352,14 @@ export default function Plan() {
                 className="px-4 py-1.5 rounded-full text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-300 hover:from-amber-300 hover:to-orange-300 shadow-md shadow-orange-500/20 hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
               >
                 <span>✨</span>
-                <span>Add AI tips</span>
+                <span>{t('plan.addAiTips', 'Add AI tips')}</span>
               </button>
             )}
 
             {aiLoading && (
               <div className="px-3.5 py-1.5 rounded-full text-xs font-semibold text-amber-200 bg-amber-500/10 border border-amber-400/30 flex items-center gap-2 animate-pulse">
                 <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                <span>Generating AI tips...</span>
+                <span>{isTamil ? 'AI குறிப்புகள் உருவாக்கப்படுகின்றன...' : 'Generating AI tips...'}</span>
               </div>
             )}
 
@@ -291,11 +370,61 @@ export default function Plan() {
                 className="px-3.5 py-1.5 rounded-full text-xs font-semibold text-amber-300 hover:text-white bg-amber-500/10 hover:bg-amber-500/20 border border-amber-400/30 transition-all cursor-pointer flex items-center gap-1.5"
               >
                 <span>✨</span>
-                <span>Regenerate tips</span>
+                <span>{isTamil ? 'குறிப்புகளை புதுப்பிக்க' : 'Regenerate tips'}</span>
+              </button>
+            )}
+
+            {/* Save Plan Button */}
+            {!loading && planData && (
+              <button
+                onClick={handleSavePlan}
+                disabled={isSaved || saveLoading}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border ${
+                  isSaved
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40 cursor-default'
+                    : 'bg-white/10 hover:bg-white/20 text-white border-white/20 hover:border-emerald-400/50'
+                }`}
+              >
+                <span>{isSaved ? '✓' : '💾'}</span>
+                <span>{saveLoading ? (isTamil ? 'சேமிக்கப்படுகிறது...' : 'Saving...') : isSaved ? t('plan.saved', 'Saved ✓') : t('plan.savePlan', 'Save this plan')}</span>
+              </button>
+            )}
+
+            {/* Download PDF Button */}
+            {!loading && planData && (
+              <button
+                onClick={handleDownloadPdf}
+                className="px-4 py-1.5 rounded-full text-xs font-bold text-sky-200 bg-sky-500/15 hover:bg-sky-500/25 border border-sky-400/40 hover:border-sky-300 transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <span>📄</span>
+                <span>Download PDF</span>
               </button>
             )}
           </div>
         </div>
+
+        {/* Save Plan Toast / Error Banners */}
+        {saveToast && (
+          <div className="p-3.5 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-200 text-xs flex items-center justify-between gap-3 animate-fade-in">
+            <div className="flex items-center gap-2">
+              <span className="text-base">✓</span>
+              <span>{saveToast}</span>
+            </div>
+            <Link
+              to="/my-trips"
+              className="font-bold underline hover:text-white"
+            >
+              View in My Trips →
+            </Link>
+          </div>
+        )}
+
+        {saveError && (
+          <div className="p-3.5 rounded-2xl bg-red-950/60 border border-red-500/40 text-red-200 text-xs flex items-center gap-2 animate-fade-in">
+            <span>⚠️</span>
+            <span>{saveError}</span>
+          </div>
+        )}
 
         {/* AI Tips Error Banner */}
         {aiError && (
@@ -329,13 +458,25 @@ export default function Plan() {
         )}
 
         {/* ========================================================================= */}
-        {/* 5. LOADING SKELETON */}
+        {/* 5. LOADING SKELETON WITH MASCOT */}
         {/* ========================================================================= */}
         {loading && (
-          <div className="space-y-6 animate-pulse">
-            <div className="h-10 bg-slate-900 rounded-2xl w-48" />
-            <div className="bg-slate-900/70 border border-white/10 rounded-3xl p-6 h-96" />
-            <div className="bg-slate-900/70 border border-white/10 rounded-3xl p-6 h-48" />
+          <div className="space-y-6">
+            <div className="p-8 rounded-3xl bg-slate-900/80 border border-white/10 flex flex-col items-center justify-center text-center space-y-4 shadow-xl animate-fade-in">
+              <Mascot pose="thinking" size={72} animate={true} />
+              <div className="space-y-1">
+                <h3 className="text-base sm:text-lg font-bold text-white">
+                  {isTamil ? 'உங்கள் பயணத்தைத் திட்டமிடுகிறது...' : 'Planning your trip...'}
+                </h3>
+                <p className="text-xs text-slate-400">
+                  {isTamil ? 'நேரங்கள், தூரங்கள் மற்றும் பட்ஜெட்டை வரிசைப்படுத்துகிறோம்' : 'Optimizing zones, darshan timings and cluster routing for Ramanathapuram'}
+                </p>
+              </div>
+            </div>
+            <div className="space-y-4 animate-pulse">
+              <div className="h-10 bg-slate-900 rounded-2xl w-48" />
+              <div className="bg-slate-900/60 border border-white/10 rounded-3xl p-6 h-72" />
+            </div>
           </div>
         )}
 
@@ -399,6 +540,7 @@ export default function Plan() {
               <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
                 {planData.days?.map((dayObj, idx) => {
                   const isActive = activeDayIndex === idx;
+                  const isFree = dayObj.is_free_day || !dayObj.stops || dayObj.stops.length === 0;
                   return (
                     <button
                       key={dayObj.day}
@@ -409,8 +551,10 @@ export default function Plan() {
                           : 'bg-slate-900/80 text-slate-300 border-white/10 hover:border-orange-400/40 hover:bg-slate-850'
                       }`}
                     >
-                      <span>Day {dayObj.day}</span>
-                      <span className="text-[10px] opacity-75">({dayObj.stops?.length || 0} stops)</span>
+                      <span>{t('common.day')} {dayObj.day}</span>
+                      <span className="text-[10px] opacity-75">
+                        {isFree ? (isTamil ? '(ஓய்வு நாள்)' : '(Free day)') : `(${dayObj.stops?.length || 0} ${t('destinations.selectedCount')})`}
+                      </span>
                     </button>
                   );
                 })}
@@ -446,14 +590,16 @@ export default function Plan() {
                           className="self-start sm:self-auto inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 shadow-md shadow-sky-500/20 hover:scale-105 active:scale-95 transition-all cursor-pointer border border-sky-400/30 whitespace-nowrap"
                         >
                           <span>🗺️</span>
-                          <span>Show on Map</span>
+                          <span>{isTamil ? 'வரைபடத்தில் காட்டு' : 'Show on Map'}</span>
                         </button>
                       )}
                     </div>
 
                     {/* Day Summary from AI Narration */}
                     {(() => {
-                      const dayNarration = aiNarration?.days?.find((d) => d.day === day.day);
+                      const dayNarration = aiNarration?.days?.find(
+                        (d) => Number(d.day) === Number(day.day)
+                      );
                       return dayNarration?.summary ? (
                         <div className="p-3.5 rounded-2xl bg-orange-500/10 border border-orange-400/25 text-xs text-orange-200 flex items-start gap-2.5 animate-fade-in shadow-inner">
                           <span className="text-sm shrink-0">✨</span>
@@ -462,9 +608,24 @@ export default function Plan() {
                       ) : null;
                     })()}
 
-                    {/* Vertical Timeline */}
-                    <div className="relative pl-6 sm:pl-8 space-y-8 before:absolute before:left-2 sm:before:left-3 before:top-3 before:bottom-3 before:w-0.5 before:bg-gradient-to-b before:from-orange-500 before:via-sky-500 before:to-orange-500">
-                      {day.stops?.map((stop, sIdx) => {
+                    {/* Free Day Exploration or Vertical Timeline */}
+                    {day.is_free_day || !day.stops || day.stops.length === 0 ? (
+                      <div className="bg-slate-950/60 border border-amber-400/20 rounded-2xl p-6 sm:p-8 text-center space-y-3">
+                        <div className="text-4xl">🌴</div>
+                        <h3 className="text-lg font-bold text-white">Free Day / Flexible Time</h3>
+                        <p className="text-xs sm:text-sm text-slate-300 max-w-lg mx-auto leading-relaxed">
+                          {day.note || 'We have limited places for this many days. You can add more destinations or keep these as flexible days to relax at your hotel, explore local bazaars, or revisit your favorite beach or temple.'}
+                        </p>
+                        {day.lunch_note && (
+                          <div className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200">
+                            <span>🍲</span>
+                            <span>{day.lunch_note}</span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="relative pl-6 sm:pl-8 space-y-8 before:absolute before:left-2 sm:before:left-3 before:top-3 before:bottom-3 before:w-0.5 before:bg-gradient-to-b before:from-orange-500 before:via-sky-500 before:to-orange-500">
+                        {day.stops?.map((stop, sIdx) => {
                         const isMissingImg = failedThumbnails[stop.place_id];
                         const badgeClass = getCategoryBadgeClass(stop.category);
 
@@ -520,8 +681,14 @@ export default function Plan() {
                                   to={`/place/${stop.place_id}`}
                                   className="text-base font-bold text-white hover:text-sky-300 transition-colors block truncate"
                                 >
-                                  {stop.name}
+                                  {(isTamil && stop.name_ta) ? stop.name_ta : stop.name}
                                 </Link>
+                                {isTamil && stop.name_ta && (
+                                  <p className="text-xs text-orange-400 font-medium mt-0.5">{stop.name}</p>
+                                )}
+                                {!isTamil && stop.name_ta && (
+                                  <p className="text-xs text-orange-400/80 font-medium mt-0.5">{stop.name_ta}</p>
+                                )}
 
                                 {stop.note && (
                                   <p className="text-xs text-slate-300 mt-1 leading-relaxed">
@@ -531,21 +698,29 @@ export default function Plan() {
 
                                 {/* AI Narration: Why visit & Local tip */}
                                 {(() => {
-                                  const dayNarration = aiNarration?.days?.find((d) => d.day === day.day);
-                                  const stopNarration = dayNarration?.stops?.find((s) => s.place_id === stop.place_id);
+                                  const dayNarration = aiNarration?.days?.find(
+                                    (d) => Number(d.day) === Number(day.day)
+                                  );
+                                  const stopNarration = dayNarration?.stops?.find(
+                                    (s) => String(s.place_id || '').toLowerCase() === String(stop.place_id || '').toLowerCase()
+                                  );
                                   if (!stopNarration) return null;
 
                                   return (
                                     <div className="mt-3 pt-2.5 border-t border-white/10 space-y-1.5 text-xs animate-fade-in">
                                       {stopNarration.why_visit && (
                                         <div className="flex items-start gap-1.5">
-                                          <span className="text-[11px] font-bold text-amber-400 shrink-0">Why visit:</span>
+                                          <span className="text-[11px] font-bold text-amber-400 shrink-0">
+                                            {isTamil ? 'ஏன் பார்க்க வேண்டும்:' : 'Why visit:'}
+                                          </span>
                                           <span className="text-slate-200 leading-snug">{stopNarration.why_visit}</span>
                                         </div>
                                       )}
                                       {stopNarration.local_tip && (
                                         <div className="flex items-start gap-1.5">
-                                          <span className="text-[11px] font-bold text-sky-400 shrink-0">Local tip:</span>
+                                          <span className="text-[11px] font-bold text-sky-400 shrink-0">
+                                            {isTamil ? 'உள்ளூர் குறிப்பு:' : 'Local tip:'}
+                                          </span>
                                           <span className="text-slate-300 leading-snug">{stopNarration.local_tip}</span>
                                         </div>
                                       )}
@@ -576,6 +751,7 @@ export default function Plan() {
                         </div>
                       )}
                     </div>
+                  )}
                   </div>
                 );
               })()}
@@ -682,10 +858,12 @@ export default function Plan() {
                     <div>
                       <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2">
                         <span>💳</span>
-                        <span>Budget & Cost Breakdown</span>
+                        <span>{isTamil ? 'பட்ஜெட் & செலவு விவரங்கள்' : 'Budget & Cost Breakdown'}</span>
                       </h2>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        Calculated for {b.travellers || 2} travellers ({b.nights} night accommodation)
+                        {isTamil
+                          ? `${b.travellers || 2} பயணிகளுக்காக கணக்கிடப்பட்டது (${b.nights} இரவு தங்குமிடம்)`
+                          : `Calculated for ${b.travellers || 2} travellers (${b.nights} night accommodation)`}
                       </p>
                     </div>
 
@@ -698,10 +876,10 @@ export default function Plan() {
                   <div className="space-y-2">
                     <div className="flex justify-between items-center text-xs font-bold">
                       <span className="text-slate-300">
-                        Estimated: ₹{b.total?.toLocaleString('en-IN')}
+                        {isTamil ? 'மதிப்பிடப்பட்டது' : 'Estimated'}: ₹{b.total?.toLocaleString('en-IN')}
                       </span>
                       <span className="text-orange-400">
-                        User Budget: ₹{b.user_budget?.toLocaleString('en-IN')}
+                        {isTamil ? 'பயண பட்ஜெட்' : 'User Budget'}: ₹{b.user_budget?.toLocaleString('en-IN')}
                       </span>
                     </div>
 
@@ -716,25 +894,25 @@ export default function Plan() {
                   {/* Breakdown Tiles */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div className="bg-slate-950/60 border border-white/10 rounded-2xl p-3.5">
-                      <span className="text-[11px] text-slate-400 font-medium">🏨 Stay</span>
+                      <span className="text-[11px] text-slate-400 font-medium">🏨 {isTamil ? 'தங்குமிடம்' : 'Stay'}</span>
                       <p className="text-base font-bold text-white mt-0.5">
                         ₹{b.breakdown?.stay?.toLocaleString('en-IN') || 0}
                       </p>
                     </div>
                     <div className="bg-slate-950/60 border border-white/10 rounded-2xl p-3.5">
-                      <span className="text-[11px] text-slate-400 font-medium">🍽️ Food</span>
+                      <span className="text-[11px] text-slate-400 font-medium">🍽️ {isTamil ? 'உணவு' : 'Food'}</span>
                       <p className="text-base font-bold text-white mt-0.5">
                         ₹{b.breakdown?.food?.toLocaleString('en-IN') || 0}
                       </p>
                     </div>
                     <div className="bg-slate-950/60 border border-white/10 rounded-2xl p-3.5">
-                      <span className="text-[11px] text-slate-400 font-medium">🚗 Transport</span>
+                      <span className="text-[11px] text-slate-400 font-medium">🚗 {isTamil ? 'போக்குவரத்து' : 'Transport'}</span>
                       <p className="text-base font-bold text-white mt-0.5">
                         ₹{b.breakdown?.transport?.toLocaleString('en-IN') || 0}
                       </p>
                     </div>
                     <div className="bg-slate-950/60 border border-white/10 rounded-2xl p-3.5">
-                      <span className="text-[11px] text-slate-400 font-medium">🎟️ Entry Fees</span>
+                      <span className="text-[11px] text-slate-400 font-medium">🎟️ {isTamil ? 'நுழைவுக் கட்டணம்' : 'Entry Fees'}</span>
                       <p className="text-base font-bold text-white mt-0.5">
                         ₹{b.breakdown?.entry_fees?.toLocaleString('en-IN') || 0}
                       </p>
@@ -743,8 +921,148 @@ export default function Plan() {
 
                   {/* Advisory Message */}
                   <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 text-xs text-slate-200 leading-relaxed">
-                    💡 <span className="font-semibold text-white">Suggestion: </span>
+                    💡 <span className="font-semibold text-white">{isTamil ? 'பரிந்துரை: ' : 'Suggestion: '}</span>
                     {b.message}
+                  </div>
+
+                  {/* Expandable "How we estimated this" section */}
+                  <div className="border-t border-white/10 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => setShowEstimatesExplainer((prev) => !prev)}
+                      className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-950/50 hover:bg-slate-950/80 border border-white/10 text-xs font-bold text-sky-300 hover:text-white transition-all cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span>📊</span>
+                        <span>{t('plan.howEstimatedTitle', 'How we estimated this')}</span>
+                      </span>
+                      <span className="text-xs font-mono text-slate-400">
+                        {showEstimatesExplainer
+                          ? t('plan.hideCalculation', '▲ Hide calculation')
+                          : t('plan.viewFormula', '▼ View formula breakdown')}
+                      </span>
+                    </button>
+
+                    {showEstimatesExplainer && (
+                      <div className="mt-3 p-4 sm:p-5 rounded-2xl bg-slate-950/70 border border-sky-400/20 text-xs text-slate-300 space-y-4 animate-fade-in">
+                        {/* Formula Rows */}
+                        <div className="space-y-3">
+                          <p className="font-bold text-white text-xs uppercase tracking-wider text-sky-400">
+                            {t('plan.assumptionsTitle', 'Calculation Breakdown & Assumptions:')}
+                          </p>
+
+                          {/* Stay Formula */}
+                          <div className="bg-slate-900/80 border border-white/5 rounded-xl p-3">
+                            <div className="flex justify-between items-center text-white font-semibold">
+                              <span>{t('plan.stayTitle', '🏨 Accommodation')}</span>
+                              <span className="text-orange-400 font-bold">
+                                ₹{b.breakdown?.stay?.toLocaleString('en-IN') || 0}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-300 mt-1 font-mono">
+                              {b.formula_inputs?.rooms || 1} room(s) × {b.formula_inputs?.nights || 0} night(s) × ₹{(b.formula_inputs?.room_rate || 0).toLocaleString('en-IN')}/night
+                            </p>
+                            <p className="text-[10px] text-slate-400 italic mt-0.5">
+                              {t('plan.stayAssumption', 'Assumes 2 people per room (rounded up).')}
+                            </p>
+                          </div>
+
+                          {/* Food Formula */}
+                          <div className="bg-slate-900/80 border border-white/5 rounded-xl p-3">
+                            <div className="flex justify-between items-center text-white font-semibold">
+                              <span>{t('plan.diningTitle', '🍽️ Dining & Refreshments')}</span>
+                              <span className="text-orange-400 font-bold">
+                                ₹{b.breakdown?.food?.toLocaleString('en-IN') || 0}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-300 mt-1 font-mono">
+                              {b.formula_inputs?.adults || 2} adult(s) @ ₹{(b.formula_inputs?.adult_food_rate || 0).toLocaleString('en-IN')}/day
+                              {b.formula_inputs?.children > 0 && ` + ${b.formula_inputs.children} child(ren) @ ₹${(b.formula_inputs?.child_food_rate || 0).toLocaleString('en-IN')}/day`}
+                              {' '}× {b.formula_inputs?.days || 1} day(s)
+                            </p>
+                            <p className="text-[10px] text-slate-400 italic mt-0.5">
+                              {t('plan.diningAssumption', 'Children under 12 estimated at 60% of adult dining rate.')}
+                            </p>
+                          </div>
+
+                          {/* Transport Formula */}
+                          <div className="bg-slate-900/80 border border-white/5 rounded-xl p-3">
+                            <div className="flex justify-between items-center text-white font-semibold">
+                              <span>{t('plan.transportTitle', '🚗 Local Transportation')}</span>
+                              <span className="text-orange-400 font-bold">
+                                ₹{b.breakdown?.transport?.toLocaleString('en-IN') || 0}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-300 mt-1 font-mono">
+                              {b.formula_inputs?.vehicles || 1} vehicle(s) × {b.formula_inputs?.days || 1} day(s) @ ₹{(b.formula_inputs?.vehicle_daily_rate || 0).toLocaleString('en-IN')}/day + route transit distance
+                            </p>
+                            <p className="text-[10px] text-slate-400 italic mt-0.5">
+                              {t('plan.transportAssumption', 'Assumes 4 passengers per vehicle (auto/sedan/SUV rounded up).')}
+                            </p>
+                          </div>
+
+                          {/* Entry Fees Formula */}
+                          <div className="bg-slate-900/80 border border-white/5 rounded-xl p-3">
+                            <div className="flex justify-between items-center text-white font-semibold">
+                              <span>{t('plan.entryFeesTitle', '🎟️ Entry Tickets & Temple Fees')}</span>
+                              <span className="text-orange-400 font-bold">
+                                ₹{b.breakdown?.entry_fees?.toLocaleString('en-IN') || 0}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 italic mt-1">
+                              {t('plan.entryFeesAssumption', "Calculated per person for adults and children (places marked 'Check locally' estimated as ₹0 until verified on site).")}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Totals & Comparison */}
+                        <div className="bg-slate-900/90 border border-sky-400/20 rounded-xl p-3.5 space-y-2">
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-300">{t('plan.totalEstimatedCost', 'Total Estimated Trip Cost:')}</span>
+                            <span className="text-base font-extrabold text-white">
+                              ₹{b.total?.toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center border-t border-white/5 pt-1.5">
+                            <span className="text-slate-300">
+                              {t('plan.costPerPerson', 'Estimated Cost per Person:')}
+                            </span>
+                            <span className="text-sm font-bold text-sky-300">
+                              ₹{(b.cost_per_person || Math.round(b.total / (b.travellers || 1))).toLocaleString('en-IN')}
+                              <span className="text-[10px] font-normal text-slate-400 ml-1">
+                                (across {b.formula_inputs?.people || b.travellers || 2} travellers)
+                              </span>
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center border-t border-white/5 pt-1.5">
+                            <span className="text-slate-300">
+                              {t('plan.statedBudget', 'Your Stated Budget:')} ({b.formula_inputs?.budget_basis || b.budget_basis || 'whole group'}):
+                            </span>
+                            <span className="text-sm font-bold text-orange-400">
+                              ₹{(b.original_user_budget || b.user_budget)?.toLocaleString('en-IN')}
+                              {b.budget_basis === 'per person' && (
+                                <span className="text-[10px] text-slate-400 ml-1">
+                                  (Group total: ₹{b.user_budget?.toLocaleString('en-IN')})
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center border-t border-white/5 pt-1.5">
+                            <span className="text-slate-300">
+                              {b.status === 'within budget' ? t('plan.remainingSavings', 'Estimated Remaining Savings:') : t('plan.shortfall', 'Estimated Shortfall:')}
+                            </span>
+                            <span className={`text-sm font-bold ${b.status === 'within budget' ? 'text-emerald-400' : 'text-red-400'}`}>
+                              ₹{(b.formula_inputs?.shortfall_or_savings || Math.abs((b.user_budget || 0) - (b.total || 0))).toLocaleString('en-IN')}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Rough Estimates Disclaimer */}
+                        <p className="text-[11px] text-slate-400 italic leading-relaxed border-t border-white/5 pt-2">
+                          ⚠️ {t('plan.roughEstimatesDisclaimer')}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </section>
               );

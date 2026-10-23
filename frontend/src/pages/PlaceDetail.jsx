@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { getPlaceById, getPlaces, getHotels, getFood, clearSession, getUser, getImageUrl } from '../services/api';
 import { useTrip } from '../context/TripContext';
 import TopBar from '../components/TopBar';
@@ -42,6 +43,8 @@ L.Marker.prototype.options.icon = DefaultMarkerIcon;
  */
 
 export default function PlaceDetail() {
+  const { t, i18n } = useTranslation();
+  const isTamil = i18n.language === 'ta';
   const { id } = useParams();
   const navigate = useNavigate();
   const { trip, togglePlace } = useTrip();
@@ -187,17 +190,17 @@ export default function PlaceDetail() {
   const getCategoryBadge = (categoryKey) => {
     switch (categoryKey) {
       case 'temple':
-        return { label: 'Temple', class: 'bg-amber-500/20 text-amber-300 border-amber-400/30' };
+        return { label: t('destinations.templesFilter', 'Temple'), class: 'bg-amber-500/20 text-amber-300 border-amber-400/30' };
       case 'beach':
-        return { label: 'Beach', class: 'bg-sky-500/20 text-sky-300 border-sky-400/30' };
+        return { label: t('destinations.beachesFilter', 'Beach'), class: 'bg-sky-500/20 text-sky-300 border-sky-400/30' };
       case 'heritage':
-        return { label: 'Heritage', class: 'bg-orange-500/20 text-orange-300 border-orange-400/30' };
+        return { label: t('destinations.heritageFilter', 'Heritage'), class: 'bg-orange-500/20 text-orange-300 border-orange-400/30' };
       case 'nature':
-        return { label: 'Nature', class: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30' };
+        return { label: t('destinations.natureFilter', 'Nature'), class: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30' };
       case 'church_dargah':
-        return { label: 'Church & Dargah', class: 'bg-purple-500/20 text-purple-300 border-purple-400/30' };
+        return { label: t('destinations.churchDargahFilter', 'Church & Dargah'), class: 'bg-purple-500/20 text-purple-300 border-purple-400/30' };
       default:
-        return { label: 'Destination', class: 'bg-slate-700/40 text-slate-300 border-white/10' };
+        return { label: t('common.destinations', 'Destination'), class: 'bg-slate-700/40 text-slate-300 border-white/10' };
     }
   };
 
@@ -334,11 +337,11 @@ export default function PlaceDetail() {
             className="inline-flex items-center gap-2 text-xs font-semibold text-sky-300 hover:text-white bg-slate-900/80 hover:bg-slate-800 border border-white/10 px-3.5 py-1.5 rounded-full transition-all cursor-pointer shadow-sm"
           >
             <span>←</span>
-            <span>Back to Destinations</span>
+            <span>{t('place.backToDestinations', 'Back to Destinations')}</span>
           </button>
 
           <span className="text-xs text-slate-400 hidden sm:inline">
-            📍 Ramanathapuram District
+            📍 {t('common.district')}
           </span>
         </div>
 
@@ -462,19 +465,28 @@ export default function PlaceDetail() {
               </span>
               {place.estimated_visit_hours && (
                 <span className="bg-slate-800/80 text-slate-300 text-xs px-2.5 py-1 rounded-full border border-white/10 font-semibold">
-                  ⏱️ {place.estimated_visit_hours} hrs visit
+                  ⏱️ {place.estimated_visit_hours} {t('common.hours')} {isTamil ? 'பார்வை நேரம்' : 'visit'}
                 </span>
               )}
             </div>
 
-            <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight leading-tight">
-              {place.name_en}
-            </h1>
-            {place.name_ta && (
-              <p className="text-sm sm:text-base text-orange-400 font-semibold">
-                {place.name_ta}
-              </p>
-            )}
+            {/* Bilingual place name */}
+            {(() => {
+              const primaryName = (isTamil && place.name_ta) ? place.name_ta : place.name_en;
+              const secondaryName = (isTamil && place.name_ta) ? place.name_en : place.name_ta;
+              return (
+                <>
+                  <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight leading-tight">
+                    {primaryName}
+                  </h1>
+                  {secondaryName && (
+                    <p className="text-sm sm:text-base text-orange-400 font-semibold">
+                      {secondaryName}
+                    </p>
+                  )}
+                </>
+              );
+            })()}
             <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-2xl pt-1">
               {place.short_description}
             </p>
@@ -505,17 +517,25 @@ export default function PlaceDetail() {
               {isAdded ? (
                 <>
                   <span>✓</span>
-                  <span>Added to Trip</span>
+                  <span>{t('common.addedToTrip')}</span>
                 </>
               ) : (
                 <>
                   <span>+</span>
-                  <span>Add to Trip</span>
+                  <span>{t('common.addToTrip')}</span>
                 </>
               )}
             </button>
           </div>
         </section>
+
+        {/* Small note on Place Detail in Tamil mode */}
+        {isTamil && (
+          <div className="p-3.5 rounded-2xl bg-sky-500/10 border border-sky-400/30 text-xs text-sky-200 flex items-center gap-2.5">
+            <span className="text-base">ℹ️</span>
+            <span>{t('common.detailedInfoInEnglish')}</span>
+          </div>
+        )}
 
         {/* ========================================================================= */}
         {/* 3. ABOUT SECTION */}
@@ -523,7 +543,7 @@ export default function PlaceDetail() {
         <section className="bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-3xl p-6 sm:p-8 shadow-xl space-y-4">
           <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
             <span>📖</span>
-            <span>About {place.name_en}</span>
+            <span>{isTamil ? 'பற்றிய தகவல்கள்' : `About ${place.name_en}`}</span>
           </h2>
           <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">
             {place.description}
@@ -550,61 +570,61 @@ export default function PlaceDetail() {
         <section className="space-y-4">
           <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
             <span>📋</span>
-            <span>Visitor Information</span>
+            <span>{isTamil ? 'பார்வையாளர் தகவல்கள்' : 'Visitor Information'}</span>
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Tile 1: Timings */}
             <div className="bg-slate-900/80 border border-white/10 rounded-2xl p-4 flex flex-col justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-orange-400 mb-1 flex items-center gap-1.5">
-                <span>🕒</span> Timings
+                <span>🕒</span> {t('place.timings')}
               </span>
-              <p className="text-sm font-semibold text-white">{place.timings || 'Check locally'}</p>
+              <p className="text-sm font-semibold text-white">{place.timings || t('common.checkLocally')}</p>
             </div>
 
             {/* Tile 2: Entry Fee */}
             <div className="bg-slate-900/80 border border-white/10 rounded-2xl p-4 flex flex-col justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-orange-400 mb-1 flex items-center gap-1.5">
-                <span>🎟️</span> Entry Fee
+                <span>🎟️</span> {t('place.entryFee')}
               </span>
-              <p className="text-sm font-semibold text-white">{place.entry_fee || 'Check locally'}</p>
+              <p className="text-sm font-semibold text-white">{place.entry_fee || t('common.checkLocally')}</p>
             </div>
 
             {/* Tile 3: Best Season */}
             <div className="bg-slate-900/80 border border-white/10 rounded-2xl p-4 flex flex-col justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-orange-400 mb-1 flex items-center gap-1.5">
-                <span>⛅</span> Best Season
+                <span>⛅</span> {t('place.bestSeason')}
               </span>
-              <p className="text-sm font-semibold text-white">{place.best_season || 'Check locally'}</p>
+              <p className="text-sm font-semibold text-white">{place.best_season || t('common.checkLocally')}</p>
             </div>
 
             {/* Tile 4: Recommended Visit Time */}
             <div className="bg-slate-900/80 border border-white/10 rounded-2xl p-4 flex flex-col justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-orange-400 mb-1 flex items-center gap-1.5">
-                <span>⏱️</span> Recommended Visit
+                <span>⏱️</span> {isTamil ? 'பார்வை நேரம்' : 'Recommended Visit'}
               </span>
               <p className="text-sm font-semibold text-white">
-                {place.estimated_visit_hours ? `${place.estimated_visit_hours} hours` : 'Check locally'}
+                {place.estimated_visit_hours ? `${place.estimated_visit_hours} ${t('common.hours')}` : t('common.checkLocally')}
               </p>
             </div>
 
             {/* Tile 5: Dress Code */}
             <div className="bg-slate-900/80 border border-white/10 rounded-2xl p-4 flex flex-col justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-orange-400 mb-1 flex items-center gap-1.5">
-                <span>👕</span> Dress Code
+                <span>👕</span> {t('place.dressCode')}
               </span>
               <p className="text-xs text-slate-200 font-medium leading-snug">
-                {place.dress_code || 'Check locally'}
+                {place.dress_code || t('common.checkLocally')}
               </p>
             </div>
 
             {/* Tile 6: Photography Rules */}
             <div className="bg-slate-900/80 border border-white/10 rounded-2xl p-4 flex flex-col justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-orange-400 mb-1 flex items-center gap-1.5">
-                <span>📷</span> Photography Rules
+                <span>📷</span> {t('place.photography')}
               </span>
               <p className="text-xs text-slate-200 font-medium leading-snug">
-                {place.photography_rules || 'Check locally'}
+                {place.photography_rules || t('common.checkLocally')}
               </p>
             </div>
           </div>
@@ -617,7 +637,7 @@ export default function PlaceDetail() {
           <section className="bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-3xl p-6 sm:p-8 shadow-xl space-y-3">
             <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
               <span>🚗</span>
-              <span>How to Reach</span>
+              <span>{isTamil ? 'எப்படி அடைவது' : 'How to Reach'}</span>
             </h2>
             <p className="text-sm text-slate-300 leading-relaxed">
               {place.how_to_reach}
@@ -632,7 +652,7 @@ export default function PlaceDetail() {
           <section className="bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-3xl p-6 sm:p-8 shadow-xl space-y-3">
             <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
               <span>💡</span>
-              <span>Visitor Tips</span>
+              <span>{t('place.localTips')}</span>
             </h2>
             <ul className="space-y-2.5">
               {place.tips.map((tip, idx) => (
@@ -652,9 +672,13 @@ export default function PlaceDetail() {
           <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-400/30 flex items-start gap-3 text-xs text-amber-200">
             <span className="text-lg">ℹ️</span>
             <div>
-              <p className="font-bold text-amber-300">Information not yet verified</p>
+              <p className="font-bold text-amber-300">
+                {isTamil ? 'விவரங்கள் சரிபார்க்கப்படவில்லை' : 'Information not yet verified'}
+              </p>
               <p className="mt-0.5 text-amber-200/80 leading-relaxed">
-                Specific details such as timings, fees, and photography guidelines are gathered from local travel references and may vary seasonally. Please check locally during your visit.
+                {isTamil
+                  ? 'நேரங்கள், கட்டணங்கள் மற்றும் விதிகள் போன்ற விவரங்கள் பருவநிலைக்கு ஏற்ப மாறக்கூடும். நேரில் உறுதிசெய்து கொள்ளவும்.'
+                  : 'Specific details such as timings, fees, and photography guidelines are gathered from local travel references and may vary seasonally. Please check locally during your visit.'}
               </p>
             </div>
           </div>
@@ -668,7 +692,7 @@ export default function PlaceDetail() {
             <div>
               <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
                 <span>📍</span>
-                <span>Location & Map</span>
+                <span>{isTamil ? 'அமைவிடம் & வரைபடம்' : 'Location & Map'}</span>
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
                 Coordinates: {place.lat}° N, {place.lng}° E
@@ -683,7 +707,7 @@ export default function PlaceDetail() {
               className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold text-white bg-gradient-to-r from-sky-600 to-blue-700 shadow-md shadow-sky-600/30 hover:scale-105 active:scale-95 transition-all cursor-pointer"
             >
               <span>🧭</span>
-              <span>Navigate in Google Maps</span>
+              <span>{t('place.openDirections', 'Navigate in Google Maps')}</span>
               <span>↗</span>
             </a>
           </div>
@@ -703,8 +727,9 @@ export default function PlaceDetail() {
               <Marker position={[place.lat, place.lng]}>
                 <Popup>
                   <div className="text-slate-900">
-                    <p className="font-bold text-sm">{place.name_en}</p>
-                    <p className="text-xs text-slate-600">{place.name_ta}</p>
+                    <p className="font-bold text-sm">{(isTamil && place.name_ta) ? place.name_ta : place.name_en}</p>
+                    {place.name_ta && isTamil && <p className="text-xs text-slate-600">{place.name_en}</p>}
+                    {place.name_ta && !isTamil && <p className="text-xs text-slate-600">{place.name_ta}</p>}
                     <p className="text-[11px] text-slate-700 mt-1">{place.short_description}</p>
                   </div>
                 </Popup>
@@ -720,13 +745,14 @@ export default function PlaceDetail() {
           <section className="space-y-4">
             <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
               <span>🗺️</span>
-              <span>Nearby Places</span>
+              <span>{isTamil ? 'அருகிலுள்ள இடங்கள்' : 'Nearby Places'}</span>
             </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {nearbyPlacesList.map((nearby) => {
                 const isNearbyFailed = failedImages[nearby.image];
                 const nearbyBadge = getCategoryBadge(nearby.category);
+                const nearbyPrimary = (isTamil && nearby.name_ta) ? nearby.name_ta : nearby.name_en;
 
                 return (
                   <div
@@ -739,7 +765,7 @@ export default function PlaceDetail() {
                       {!isNearbyFailed ? (
                         <img
                           src={nearby.image}
-                          alt={nearby.name_en}
+                          alt={nearbyPrimary}
                           onError={() => handleImageError(nearby.image)}
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                         />
@@ -756,10 +782,10 @@ export default function PlaceDetail() {
                         {nearbyBadge.label}
                       </span>
                       <h4 className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-sky-300 transition-colors">
-                        {nearby.name_en}
+                        {nearbyPrimary}
                       </h4>
                       <p className="text-[11px] text-slate-400 mt-0.5">
-                        ⏱️ {nearby.estimated_visit_hours} hrs
+                        ⏱️ {nearby.estimated_visit_hours} {t('common.hours')}
                       </p>
                     </div>
                   </div>
@@ -777,19 +803,21 @@ export default function PlaceDetail() {
             <div>
               <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
                 <span>🏨</span>
-                <span>Stay and Eat Nearby</span>
+                <span>{isTamil ? 'அருகிலுள்ள தங்குமிடம் மற்றும் உணவு' : 'Stay and Eat Nearby'}</span>
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Accommodations and dining spots located right next to {place.name_en}.
+                {isTamil
+                  ? `${(isTamil && place.name_ta) ? place.name_ta : place.name_en} அருகில் உள்ள தங்குமிடங்கள் மற்றும் உணவகங்கள்.`
+                  : `Accommodations and dining spots located right next to ${place.name_en}.`}
               </p>
             </div>
             <div className="flex items-center gap-2 text-xs">
               <Link to="/explore/hotels" className="text-sky-300 hover:text-white transition-colors">
-                All Stays →
+                {isTamil ? 'அனைத்து விடுதிகள் →' : 'All Stays →'}
               </Link>
               <span className="text-slate-600">•</span>
               <Link to="/explore/food" className="text-orange-300 hover:text-white transition-colors">
-                All Food →
+                {isTamil ? 'அனைத்து உணவகங்கள் →' : 'All Food →'}
               </Link>
             </div>
           </div>
@@ -798,23 +826,25 @@ export default function PlaceDetail() {
             <div className="p-8 text-center rounded-2xl bg-slate-950/50 border border-white/5 space-y-3">
               <span className="text-3xl block">📍</span>
               <p className="text-sm font-semibold text-slate-300">
-                No data yet
+                {isTamil ? 'விவரங்கள் இல்லை' : 'No data yet'}
               </p>
               <p className="text-xs text-slate-400 max-w-md mx-auto">
-                No verified hotels or eateries are listed directly adjacent to {place.name_en} yet. Check our explore directories for options across Rameswaram and Ramanathapuram.
+                {isTamil
+                  ? 'இந்த இடத்தின் அருகே பதிவு செய்யப்பட்ட விடுதிகள் அல்லது உணவகங்கள் எதுவும் இல்லை.'
+                  : `No verified hotels or eateries are listed directly adjacent to ${place.name_en} yet.`}
               </p>
               <div className="pt-2 flex justify-center gap-3">
                 <button
                   onClick={() => navigate('/explore/hotels')}
                   className="px-4 py-2 rounded-full text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer"
                 >
-                  Explore Stays
+                  {isTamil ? 'விடுதிகளைப் பார்க்க' : 'Explore Stays'}
                 </button>
                 <button
                   onClick={() => navigate('/explore/food')}
                   className="px-4 py-2 rounded-full text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer"
                 >
-                  Explore Food
+                  {isTamil ? 'உணவகங்களைப் பார்க்க' : 'Explore Food'}
                 </button>
               </div>
             </div>
@@ -825,47 +855,52 @@ export default function PlaceDetail() {
                 <div className="space-y-3">
                   <h3 className="text-sm font-bold text-sky-300 flex items-center gap-2">
                     <span>🛏️</span>
-                    <span>Places to Stay Nearby ({nearbyHotels.length})</span>
+                    <span>{isTamil ? `அருகிலுள்ள விடுதிகள் (${nearbyHotels.length})` : `Places to Stay Nearby (${nearbyHotels.length})`}</span>
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {nearbyHotels.map((hotel) => (
-                      <div
-                        key={hotel.id}
-                        className="bg-slate-950/70 border border-white/10 rounded-2xl p-4 flex flex-col justify-between space-y-3"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <h4 className="text-sm font-bold text-white">{hotel.name}</h4>
-                            <p className="text-xs text-slate-400 mt-0.5">📍 {hotel.area}</p>
-                          </div>
-                          {hotel.rating && (
-                            <span className="text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-400/30 px-2 py-0.5 rounded-full">
-                              ⭐ {hotel.rating}
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="text-xs text-emerald-300 font-semibold">
-                          🏷️ {hotel.price_range_per_night || 'Check pricing'} / night
-                        </div>
-
-                        {!hotel.verified && (
-                          <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-400/25 text-[10px] space-y-0.5 text-amber-200">
-                            <p className="font-bold text-amber-300">ℹ️ Information Not Verified</p>
-                            <p className="text-amber-200/80">Prices and timings may change. Please confirm before visiting.</p>
-                          </div>
-                        )}
-
-                        <a
-                          href={hotel.map_link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="py-1.5 px-3 rounded-full text-xs font-bold text-center bg-white/10 hover:bg-sky-500 hover:text-white text-slate-200 border border-white/15 transition-all cursor-pointer"
+                    {nearbyHotels.map((hotel) => {
+                      const hotelPrimary = (isTamil && hotel.name_ta) ? hotel.name_ta : hotel.name;
+                      const hotelSecondary = (isTamil && hotel.name_ta) ? hotel.name : hotel.name_ta;
+                      return (
+                        <div
+                          key={hotel.id}
+                          className="bg-slate-950/70 border border-white/10 rounded-2xl p-4 flex flex-col justify-between space-y-3"
                         >
-                          View on Map ↗
-                        </a>
-                      </div>
-                    ))}
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <h4 className="text-sm font-bold text-white">{hotelPrimary}</h4>
+                              {hotelSecondary && <p className="text-xs text-orange-400/80">{hotelSecondary}</p>}
+                              <p className="text-xs text-slate-400 mt-0.5">📍 {hotel.area}</p>
+                            </div>
+                            {hotel.rating && (
+                              <span className="text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-400/30 px-2 py-0.5 rounded-full">
+                                ⭐ {hotel.rating}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="text-xs text-emerald-300 font-semibold">
+                            🏷️ {hotel.price_range_per_night || t('common.checkLocally')} / {t('common.day')}
+                          </div>
+
+                          {!hotel.verified && (
+                            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-400/25 text-[10px] space-y-0.5 text-amber-200">
+                              <p className="font-bold text-amber-300">ℹ️ {t('common.unverified')}</p>
+                              <p className="text-amber-200/80">{isTamil ? 'கட்டணங்கள் மற்றும் விவரங்களை நேரில் உறுதிசெய்க.' : 'Prices and timings may change. Please confirm before visiting.'}</p>
+                            </div>
+                          )}
+
+                          <a
+                            href={hotel.map_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="py-1.5 px-3 rounded-full text-xs font-bold text-center bg-white/10 hover:bg-sky-500 hover:text-white text-slate-200 border border-white/15 transition-all cursor-pointer"
+                          >
+                            {isTamil ? 'வரைபடத்தில் பார்க்க ↗' : 'View on Map ↗'}
+                          </a>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -875,60 +910,65 @@ export default function PlaceDetail() {
                 <div className="space-y-3">
                   <h3 className="text-sm font-bold text-orange-300 flex items-center gap-2">
                     <span>🍲</span>
-                    <span>Places to Eat Nearby ({nearbyFood.length})</span>
+                    <span>{isTamil ? `அருகிலுள்ள உணவகங்கள் (${nearbyFood.length})` : `Places to Eat Nearby (${nearbyFood.length})`}</span>
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {nearbyFood.map((food) => (
-                      <div
-                        key={food.id}
-                        className="bg-slate-950/70 border border-white/10 rounded-2xl p-4 flex flex-col justify-between space-y-3"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <h4 className="text-sm font-bold text-white">{food.name}</h4>
-                            <p className="text-xs text-slate-400 mt-0.5">📍 {food.area}</p>
-                          </div>
-                          {food.rating && (
-                            <span className="text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-400/30 px-2 py-0.5 rounded-full">
-                              ⭐ {food.rating}
-                            </span>
-                          )}
-                        </div>
-
-                        {Array.isArray(food.famous_for) && food.famous_for.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {food.famous_for.slice(0, 3).map((dish, idx) => (
-                              <span
-                                key={idx}
-                                className="text-[10px] text-amber-200 bg-amber-500/10 border border-amber-400/20 px-2 py-0.5 rounded"
-                              >
-                                {dish}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-
-                        <div className="text-xs text-emerald-300 font-semibold">
-                          💰 {food.price_range || 'Affordable'}
-                        </div>
-
-                        {!food.verified && (
-                          <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-400/25 text-[10px] space-y-0.5 text-amber-200">
-                            <p className="font-bold text-amber-300">ℹ️ Information Not Verified</p>
-                            <p className="text-amber-200/80">Prices and timings may change. Please confirm before visiting.</p>
-                          </div>
-                        )}
-
-                        <a
-                          href={food.map_link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="py-1.5 px-3 rounded-full text-xs font-bold text-center bg-white/10 hover:bg-orange-500 hover:text-white text-slate-200 border border-white/15 transition-all cursor-pointer"
+                    {nearbyFood.map((food) => {
+                      const foodPrimary = (isTamil && food.name_ta) ? food.name_ta : food.name;
+                      const foodSecondary = (isTamil && food.name_ta) ? food.name : food.name_ta;
+                      return (
+                        <div
+                          key={food.id}
+                          className="bg-slate-950/70 border border-white/10 rounded-2xl p-4 flex flex-col justify-between space-y-3"
                         >
-                          View on Map ↗
-                        </a>
-                      </div>
-                    ))}
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <h4 className="text-sm font-bold text-white">{foodPrimary}</h4>
+                              {foodSecondary && <p className="text-xs text-orange-400/80">{foodSecondary}</p>}
+                              <p className="text-xs text-slate-400 mt-0.5">📍 {food.area}</p>
+                            </div>
+                            {food.rating && (
+                              <span className="text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-400/30 px-2 py-0.5 rounded-full">
+                                ⭐ {food.rating}
+                              </span>
+                            )}
+                          </div>
+
+                          {Array.isArray(food.famous_for) && food.famous_for.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {food.famous_for.slice(0, 3).map((dish, idx) => (
+                                <span
+                                  key={idx}
+                                  className="text-[10px] text-amber-200 bg-amber-500/10 border border-amber-400/20 px-2 py-0.5 rounded"
+                                >
+                                  {dish}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="text-xs text-emerald-300 font-semibold">
+                            💰 {food.price_range || (isTamil ? 'குறைந்த கட்டணம்' : 'Affordable')}
+                          </div>
+
+                          {!food.verified && (
+                            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-400/25 text-[10px] space-y-0.5 text-amber-200">
+                              <p className="font-bold text-amber-300">ℹ️ {t('common.unverified')}</p>
+                              <p className="text-amber-200/80">{isTamil ? 'கட்டணங்கள் மற்றும் விவரங்களை நேரில் உறுதிசெய்க.' : 'Prices and timings may change. Please confirm before visiting.'}</p>
+                            </div>
+                          )}
+
+                          <a
+                            href={food.map_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="py-1.5 px-3 rounded-full text-xs font-bold text-center bg-white/10 hover:bg-orange-500 hover:text-white text-slate-200 border border-white/15 transition-all cursor-pointer"
+                          >
+                            {isTamil ? 'வரைபடத்தில் பார்க்க ↗' : 'View on Map ↗'}
+                          </a>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

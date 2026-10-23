@@ -114,13 +114,24 @@ export async function signupUser(userData) {
     if (response.ok) {
       return { success: true, data };
     } else {
-      const errorMessage = data && data.detail ? data.detail : 'Signup failed. Please check your information.';
-      return { success: false, error: errorMessage, status: response.status };
+      let field = null;
+      let errorMessage = 'Signup failed. Please check your information.';
+      if (data && data.detail) {
+        if (typeof data.detail === 'object' && data.detail !== null) {
+          field = data.detail.field || null;
+          errorMessage = data.detail.message || JSON.stringify(data.detail);
+        } else {
+          errorMessage = String(data.detail);
+        }
+      }
+      console.warn('Signup error from server:', { status: response.status, field, errorMessage });
+      return { success: false, error: errorMessage, field, status: response.status };
     }
   } catch (err) {
+    console.error('Signup network error:', err);
     return {
       success: false,
-      error: 'Cannot reach server, please try again',
+      error: 'Cannot reach the server, please try again.',
       networkError: true,
     };
   }
@@ -144,13 +155,22 @@ export async function loginUser(credentials) {
       setSession(data.access_token, data.user);
       return { success: true, data };
     } else {
-      const errorMessage = data && data.detail ? data.detail : 'Invalid email or password';
+      let errorMessage = 'Invalid email or password';
+      if (data && data.detail) {
+        if (typeof data.detail === 'object' && data.detail !== null) {
+          errorMessage = data.detail.message || JSON.stringify(data.detail);
+        } else {
+          errorMessage = String(data.detail);
+        }
+      }
+      console.warn('Login error from server:', { status: response.status, errorMessage });
       return { success: false, error: errorMessage, status: response.status };
     }
   } catch (err) {
+    console.error('Login network error:', err);
     return {
       success: false,
-      error: 'Cannot reach server, please try again',
+      error: 'Cannot reach the server, please try again.',
       networkError: true,
     };
   }
@@ -431,7 +451,7 @@ export async function deletePlace(id) {
 /**
  * Sends a user query along with conversation history and active trip plan to the Solvane AI Guide.
  */
-export async function sendChatMessage({ message, history = [], trip = null }) {
+export async function sendChatMessage({ message, history = [], trip = null, language = 'en' }) {
   try {
     const response = await authFetch('/api/chat', {
       method: 'POST',
@@ -439,6 +459,7 @@ export async function sendChatMessage({ message, history = [], trip = null }) {
         message,
         history,
         trip,
+        language,
       }),
     });
     const data = await response.json().catch(() => null);
@@ -459,11 +480,195 @@ export async function sendChatMessage({ message, history = [], trip = null }) {
   }
 }
 
+// -------------------------------------------------------------
+// SAVED PLANS APIS
+// -------------------------------------------------------------
+export async function savePlan({ plan, trip, title, narration }) {
+  try {
+    const response = await authFetch('/api/saved-plans', {
+      method: 'POST',
+      body: JSON.stringify({ plan, trip, title, narration }),
+    });
+    const data = await response.json().catch(() => null);
+    if (response.ok) {
+      return { success: true, data };
+    }
+    return {
+      success: false,
+      error: data?.detail || 'Failed to save trip plan.',
+      status: response.status,
+    };
+  } catch (err) {
+    return { success: false, error: 'Cannot reach server, please try again.', networkError: true };
+  }
+}
+
+export async function getSavedPlans() {
+  try {
+    const response = await authFetch('/api/saved-plans');
+    const data = await response.json().catch(() => null);
+    if (response.ok) {
+      return { success: true, data };
+    }
+    return {
+      success: false,
+      error: data?.detail || 'Failed to load saved plans.',
+      status: response.status,
+    };
+  } catch (err) {
+    return { success: false, error: 'Cannot reach server, please try again.', networkError: true };
+  }
+}
+
+export async function getSavedPlanById(planId) {
+  try {
+    const response = await authFetch(`/api/saved-plans/${encodeURIComponent(planId)}`);
+    const data = await response.json().catch(() => null);
+    if (response.ok) {
+      return { success: true, data };
+    }
+    return {
+      success: false,
+      error: data?.detail || 'Saved plan not found.',
+      status: response.status,
+    };
+  } catch (err) {
+    return { success: false, error: 'Cannot reach server, please try again.', networkError: true };
+  }
+}
+
+export async function deleteSavedPlan(planId) {
+  try {
+    const response = await authFetch(`/api/saved-plans/${encodeURIComponent(planId)}`, {
+      method: 'DELETE',
+    });
+    const data = await response.json().catch(() => null);
+    if (response.ok) {
+      return { success: true, data };
+    }
+    return {
+      success: false,
+      error: data?.detail || 'Failed to delete saved plan.',
+      status: response.status,
+    };
+  } catch (err) {
+    return { success: false, error: 'Cannot reach server, please try again.', networkError: true };
+  }
+}
+
+// -------------------------------------------------------------
+// ADMIN DASHBOARD & AUDIT APIS
+// -------------------------------------------------------------
+export async function getAdminStats() {
+  try {
+    const response = await authFetch('/api/admin/stats');
+    const data = await response.json().catch(() => null);
+    if (response.ok) {
+      return { success: true, data };
+    }
+    return {
+      success: false,
+      error: data?.detail || 'Failed to fetch admin stats.',
+      status: response.status,
+    };
+  } catch (err) {
+    return { success: false, error: 'Cannot reach server, please try again.', networkError: true };
+  }
+}
+
+export async function getAdminUsers({ page = 1, limit = 15, search = '' } = {}) {
+  try {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (search && search.trim()) {
+      params.append('search', search.trim());
+    }
+    const response = await authFetch(`/api/admin/users?${params.toString()}`);
+    const data = await response.json().catch(() => null);
+    if (response.ok) {
+      return { success: true, data };
+    }
+    return {
+      success: false,
+      error: data?.detail || 'Failed to fetch users list.',
+      status: response.status,
+    };
+  } catch (err) {
+    return { success: false, error: 'Cannot reach server, please try again.', networkError: true };
+  }
+}
+
+export async function getAdminLoginLogs({ page = 1, limit = 20, success = null, startDate = '', endDate = '' } = {}) {
+  try {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (success !== null && success !== undefined && success !== '') {
+      params.append('success', String(success));
+    }
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    const response = await authFetch(`/api/admin/login-logs?${params.toString()}`);
+    const data = await response.json().catch(() => null);
+    if (response.ok) {
+      return { success: true, data };
+    }
+    return {
+      success: false,
+      error: data?.detail || 'Failed to fetch login logs.',
+      status: response.status,
+    };
+  } catch (err) {
+    return { success: false, error: 'Cannot reach server, please try again.', networkError: true };
+  }
+}
+
+export async function getAdminChatLogs({ page = 1, limit = 20 } = {}) {
+  try {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+    const response = await authFetch(`/api/admin/chat-logs?${params.toString()}`);
+    const data = await response.json().catch(() => null);
+    if (response.ok) {
+      return { success: true, data };
+    }
+    return {
+      success: false,
+      error: data?.detail || 'Failed to fetch chat logs.',
+      status: response.status,
+    };
+  } catch (err) {
+    return { success: false, error: 'Cannot reach server, please try again.', networkError: true };
+  }
+}
+
+export async function downloadAdminExportCsv(type = 'users') {
+  try {
+    const endpoint = type === 'users' ? '/api/admin/export/users.csv' : '/api/admin/export/login-logs.csv';
+    const filename = type === 'users' ? 'solvane-users.csv' : 'solvane-login-logs.csv';
+    const response = await authFetch(endpoint);
+    if (!response.ok) {
+      return { success: false, error: 'Failed to download CSV export.' };
+    }
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: 'Error downloading CSV file.' };
+  }
+}
+
+
+
+
 /**
  * Calls /api/plan/enhance to fetch AI-generated tour narration, highlights,
  * packing tips, safety notes, and budget advice for the current itinerary.
  */
-export async function enhancePlan({ plan, trip, forceRefresh = false }) {
+export async function enhancePlan({ plan, trip, forceRefresh = false, language = 'en' }) {
   try {
     const response = await authFetch('/api/plan/enhance', {
       method: 'POST',
@@ -478,6 +683,7 @@ export async function enhancePlan({ plan, trip, forceRefresh = false }) {
             }
           : null,
         force_refresh: forceRefresh,
+        language,
       }),
     });
     const data = await response.json().catch(() => null);
@@ -497,6 +703,9 @@ export async function enhancePlan({ plan, trip, forceRefresh = false }) {
     };
   }
 }
+
+
+
 
 
 

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import TopBar from '../components/TopBar';
+import Mascot from '../components/Mascot';
 import { getHotels, getPlaces } from '../services/api';
 
 /**
@@ -31,6 +33,8 @@ const HOTEL_CATEGORIES = [
 ];
 
 export default function ExploreHotels() {
+  const { t, i18n } = useTranslation();
+  const isTamil = i18n.language === 'ta';
   const navigate = useNavigate();
 
   // Data fetching states
@@ -237,7 +241,9 @@ export default function ExploreHotels() {
         {/* Empty State */}
         {!loading && !error && filteredHotels.length === 0 && (
           <div className="p-12 text-center rounded-3xl bg-slate-900/60 border border-white/10 max-w-md mx-auto space-y-3">
-            <span className="text-4xl block">🏨</span>
+            <div className="flex justify-center mb-1">
+              <Mascot pose="pointing" size={68} animate={true} />
+            </div>
             <h3 className="text-lg font-bold text-white">No Stays Found</h3>
             <p className="text-xs text-slate-400">
               No accommodations found matching your filter criteria. Try choosing "All Stays" or clear your search term.
@@ -316,8 +322,13 @@ export default function ExploreHotels() {
                   <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
                     <div className="space-y-2">
                       <h3 className="text-base sm:text-lg font-bold text-white group-hover:text-sky-300 transition-colors line-clamp-1">
-                        {hotel.name}
+                        {(isTamil && hotel.name_ta) ? hotel.name_ta : hotel.name}
                       </h3>
+                      {hotel.name_ta && (
+                        <p className="text-xs text-orange-400/80 font-medium">
+                          {isTamil ? hotel.name : hotel.name_ta}
+                        </p>
+                      )}
                       <p className="text-xs text-slate-300 flex items-center gap-1.5">
                         <span className="text-orange-400">📍</span>
                         <span>{hotel.area}</span>

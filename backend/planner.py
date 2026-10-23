@@ -1,8 +1,15 @@
 import math
 import re
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Tuple
-from config import COST_ESTIMATES, TRANSPORT_COST_PER_KM_PER_PERSON
+from typing import List, Dict, Any, Tuple, Union
+from config import (
+    TIER_THRESHOLDS,
+    COST_RATES,
+    CHILD_FOOD_RATIO,
+    TRANSPORT_PER_VEHICLE_PER_KM,
+    COST_ESTIMATES,
+    TRANSPORT_COST_PER_KM_PER_PERSON,
+)
 
 # =============================================================================
 # GEOGRAPHICAL DISTANCE & TRANSIT SPEED HELPERS
@@ -35,14 +42,14 @@ def parse_entry_fee(fee_str: str) -> Tuple[int, bool]:
     """
     if not fee_str:
         return 0, False
-    lower = fee_str.lower().strip()
+    lower = str(fee_str).lower().strip()
     if "free" in lower:
         return 0, False
     if "check locally" in lower:
         return 0, True
     
     # Try finding numerical fee value
-    nums = re.findall(r"\d+", fee_str)
+    nums = re.findall(r"\d+", lower)
     if nums:
         return int(nums[0]), False
     return 0, True
@@ -84,7 +91,6 @@ ZONE_METADATA = {
     }
 }
 
-# Preferred zone sequence for multi-day itineraries
 PREFERRED_ZONE_ORDER = ["rameswaram_town", "dhanushkodi_side", "pamban", "mainland"]
 
 # =============================================================================
@@ -97,16 +103,41 @@ def generate_itinerary(
     travelling_with: str,
     interests: List[str],
     selected_place_ids: List[str],
-    travellers: int = 2
+    travellers: Union[int, Dict[str, Any]] = 2,
+    budget_basis: str = "group"
 ) -> Dict[str, Any]:
     """
     Builds a structured, rule-based Ramanathapuram itinerary according to the user's
-    budget, duration, group type, and selected destinations.
+    budget, duration (up to 14 days), travellers (adults, children, seniors), and
+    selected destinations.
     """
     warnings: List[str] = []
     could_not_fit: List[Dict[str, Any]] = []
 
-    # 1. Normalize Days and Group Pacing
+    # 1. Normalize Travellers Breakdown
+    # Supports both legacy int and new dict: { adults: 2, children: 0, seniors: 0 }
+    if isinstance(travellers, dict):
+        adults_count = max(1, int(travellers.get("adults", 2) or 2))
+        children_count = max(0, int(travellers.get("children", 0) or 0))
+        seniors_count = max(0, int(travellers.get("seniors", 0) or 0))
+    else:
+        try:
+            val = int(travellers or 2)
+            adults_count = max(1, val)
+        except (ValueError, TypeError):
+            adults_count = 2
+        children_count = 0
+        seniors_count = 0
+
+    group_type = (travelling_with or "family").lower().strip()
+    if group_type == "solo":
+        adults_count = 1
+        children_count = 0
+        seniors_count = 0
+
+    total_people = adults_count + children_count
+
+    # 2. Normalize Days (Up to 14 days)
     days_str = str(days_input).strip().lower()
     if days_str in ["half", "0.5"]:
         num_days = 0.5
@@ -115,38 +146,37 @@ def generate_itinerary(
     else:
         try:
             num_days = float(days_input)
-            num_days = max(1.0, min(4.0, num_days))
+            num_days = max(1.0, min(14.0, num_days))
         except (ValueError, TypeError):
             num_days = 2.0
         day_count = int(num_days)
         is_half_day = False
 
-    group_type = (travelling_with or "family").lower().strip()
-    is_relaxed_group = group_type in ["seniors", "family"]
-    
-    # Maximum stops allowed per day based on group type
+    # 3. Pacing & Max Stops
+    # Slower pacing applies if group is seniors/family OR if seniors > 0 OR children > 0
+    has_seniors = (seniors_count > 0) or (group_type == "seniors")
+    has_children = (children_count > 0) or (group_type == "family")
+    is_relaxed_group = has_seniors or has_children
+
     if is_half_day:
         max_stops_per_day = 3
-    elif group_type == "seniors":
+    elif has_seniors:
         max_stops_per_day = 3
-    elif group_type == "family":
+    elif has_children:
         max_stops_per_day = 4
     else:
-        max_stops_per_day = 5  # solo, friends
+        max_stops_per_day = 5
 
-    total_capacity = max_stops_per_day if is_half_day else (max_stops_per_day * day_count)
-
-    # 2. Index places by id
+    # 4. Filter & Select Places
     places_by_id = {p["id"]: p for p in all_places}
 
-    # Clean selected place objects
-    selected_places = []
+    selected_places: List[Dict[str, Any]] = []
     for pid in selected_place_ids:
         if pid in places_by_id and places_by_id[pid] not in selected_places:
             selected_places.append(places_by_id[pid])
 
-    # Filter physically demanding places for seniors if requested
-    if group_type == "seniors":
+    # Exempt physically demanding places for seniors
+    if has_seniors:
         filtered_selected = []
         for p in selected_places:
             tags = [t.lower() for t in p.get("tags", [])]
@@ -160,8 +190,10 @@ def generate_itinerary(
                 filtered_selected.append(p)
         selected_places = filtered_selected
 
-    # 3. Handle capacity overflow for selected places
-    included_places = []
+    # Total place capacity for the trip
+    total_capacity = max_stops_per_day if is_half_day else (max_stops_per_day * day_count)
+
+    included_places: List[Dict[str, Any]] = []
     if len(selected_places) > total_capacity:
         included_places = selected_places[:total_capacity]
         for p in selected_places[total_capacity:]:
@@ -173,14 +205,14 @@ def generate_itinerary(
     else:
         included_places = list(selected_places)
 
-    # 4. Fill remaining capacity with interest-matched places
+    # Fill remaining capacity with interest-matched places
     if len(included_places) < total_capacity:
         slots_needed = total_capacity - len(included_places)
         unselected = [p for p in all_places if p not in included_places]
 
         # Rank unselected places by matching user interests
         clean_interests = [i.lower().strip() for i in (interests or [])]
-        
+
         def compute_score(place: Dict[str, Any]) -> int:
             score = 0
             cat = place.get("category", "").lower()
@@ -190,14 +222,21 @@ def generate_itinerary(
                 t_lower = tag.lower()
                 if any(ci in t_lower for ci in clean_interests):
                     score += 2
+            # Skip physically demanding places if seniors present
+            if has_seniors and "physically demanding" in [t.lower() for t in place.get("tags", [])]:
+                score -= 100
             return score
 
         unselected.sort(key=compute_score, reverse=True)
-        # Add highest matching places
-        included_places.extend(unselected[:slots_needed])
+        # Avoid including negative score items if seniors are present
+        for candidate in unselected:
+            if len(included_places) >= total_capacity:
+                break
+            if has_seniors and "physically demanding" in [t.lower() for t in candidate.get("tags", [])]:
+                continue
+            included_places.append(candidate)
 
     # 5. Group chosen places into Days by Zone
-    # Determine which zones are present
     zone_groups: Dict[str, List[Dict[str, Any]]] = {
         "rameswaram_town": [],
         "dhanushkodi_side": [],
@@ -211,17 +250,13 @@ def generate_itinerary(
         else:
             zone_groups[z].append(p)
 
-    # Distribute zones across the number of days
     day_allocations: List[List[Dict[str, Any]]] = []
 
     if is_half_day:
-        # Half day: 1 morning zone
-        # Prefer zone with most places
         best_zone = max(zone_groups.keys(), key=lambda z: len(zone_groups[z]))
         day_allocations.append(zone_groups[best_zone][:max_stops_per_day])
     elif day_count == 1:
-        # 1 Full Day: combine top zones up to max_stops_per_day
-        day1_places = []
+        day1_places: List[Dict[str, Any]] = []
         for z in PREFERRED_ZONE_ORDER:
             for p in zone_groups[z]:
                 if len(day1_places) < max_stops_per_day:
@@ -235,25 +270,32 @@ def generate_itinerary(
                         })
         day_allocations.append(day1_places)
     elif day_count == 2:
-        # 2 Days: Day 1 Town, Day 2 Dhanushkodi + Pamban
         d1 = zone_groups["rameswaram_town"][:max_stops_per_day]
         d2 = (zone_groups["dhanushkodi_side"] + zone_groups["pamban"] + zone_groups["mainland"])[:max_stops_per_day]
         day_allocations.extend([d1, d2])
     elif day_count == 3:
-        # 3 Days: Day 1 Town, Day 2 Dhanushkodi, Day 3 Pamban + Mainland
         d1 = zone_groups["rameswaram_town"][:max_stops_per_day]
         d2 = zone_groups["dhanushkodi_side"][:max_stops_per_day]
         d3 = (zone_groups["pamban"] + zone_groups["mainland"])[:max_stops_per_day]
         day_allocations.extend([d1, d2, d3])
-    else:
-        # 4 Days: Dedicated zone per day
+    elif day_count == 4:
         d1 = zone_groups["rameswaram_town"][:max_stops_per_day]
         d2 = zone_groups["dhanushkodi_side"][:max_stops_per_day]
         d3 = zone_groups["pamban"][:max_stops_per_day]
         d4 = zone_groups["mainland"][:max_stops_per_day]
         day_allocations.extend([d1, d2, d3, d4])
+    else:
+        # 5 to 14 days: Distribute available zones across first days
+        d1 = zone_groups["rameswaram_town"][:max_stops_per_day]
+        d2 = zone_groups["dhanushkodi_side"][:max_stops_per_day]
+        d3 = zone_groups["pamban"][:max_stops_per_day]
+        d4 = zone_groups["mainland"][:max_stops_per_day]
+        day_allocations.extend([d1, d2, d3, d4])
+        # Remaining days start empty
+        for _ in range(day_count - 4):
+            day_allocations.append([])
 
-    # If any day has 0 places (e.g. user selected nothing in that zone), borrow from overflow
+    # Distribute any remaining unassigned places without repeating
     all_assigned = [p for day in day_allocations for p in day]
     remaining_unassigned = [p for p in included_places if p not in all_assigned]
 
@@ -261,19 +303,33 @@ def generate_itinerary(
         while len(day_allocations[day_idx]) < max_stops_per_day and remaining_unassigned:
             day_allocations[day_idx].append(remaining_unassigned.pop(0))
 
+    # Detect if any days ended up as Free Days
+    has_free_days = any(len(day_stops) == 0 for day_stops in day_allocations)
+    if has_free_days:
+        warnings.append(
+            "We have limited places for this many days. You can add more destinations or keep these as flexible days."
+        )
+
     # 6. Build Daily Schedules with Haversine Sequencing & Time Windows
-    days_output = []
+    days_output: List[Dict[str, Any]] = []
     total_trip_km = 0.0
     all_visited_places: List[Dict[str, Any]] = []
 
     for day_num, raw_stops in enumerate(day_allocations, start=1):
         if not raw_stops:
+            # Free day / flexible time
+            days_output.append({
+                "day": day_num,
+                "is_free_day": True,
+                "title": f"Day {day_num}: Free Day / Flexible Exploration",
+                "zone_summary": "Relax at your hotel, explore local bazaars and beachside cafes, or revisit your favorite temple.",
+                "stops": [],
+                "note": "Free day / flexible time: We have limited places for this many days. You can add more destinations or keep these as flexible days.",
+                "lunch_note": "12:30 PM - 01:30 PM • Leisure lunch at your convenience" if not is_half_day else None
+            })
             continue
 
-        # Sort stops logically:
-        # 1. Temples/spiritual baths first (morning darshan)
-        # 2. Dhanushkodi must finish by 5:30 PM
-        # 3. Beaches & sunset spots in late afternoon
+        # Sort stops logically
         def stop_sort_key(p: Dict[str, Any]) -> int:
             cat = p.get("category", "").lower()
             pid = p.get("id", "")
@@ -285,7 +341,7 @@ def generate_itinerary(
                 return 5  # Afternoon daylight visit
             if cat == "beach" or "sunset" in p.get("tags", []):
                 return 8  # Late afternoon sunset
-            return 4      # Museums, heritage in midday
+            return 4
 
         sorted_stops = sorted(raw_stops, key=stop_sort_key)
 
@@ -295,8 +351,6 @@ def generate_itinerary(
             current = sorted_stops.pop(0)
             sequenced_stops.append(current)
             while sorted_stops:
-                # Find nearest remaining stop that preserves temporal rules
-                # e.g. don't push Dhanushkodi to late night
                 nearest_idx = 0
                 min_d = float('inf')
                 for idx, candidate in enumerate(sorted_stops):
@@ -314,7 +368,7 @@ def generate_itinerary(
         current_hour = 6 if first_is_temple else 8
         current_minute = 0
 
-        day_stops_formatted = []
+        day_stops_formatted: List[Dict[str, Any]] = []
         prev_place = None
         lunch_added = False
 
@@ -333,6 +387,12 @@ def generate_itinerary(
                 fee_warn = f"Entry fee for {place['name_en']} is marked as 'Check locally' (estimated as ₹0)."
                 if fee_warn not in warnings:
                     warnings.append(fee_warn)
+            elif fee_val > 0 and children_count > 0:
+                # If place does not specify a separate child fee, note it
+                if "child" not in str(place.get("entry_fee", "")).lower():
+                    child_warn = f"Child fees not verified for {place['name_en']} (estimated at standard rate)."
+                    if child_warn not in warnings:
+                        warnings.append(child_warn)
 
             # Travel calculation
             if prev_place is None:
@@ -348,7 +408,6 @@ def generate_itinerary(
 
             # Lunch Break check: between 12:00 PM and 1:30 PM
             if not lunch_added and not is_half_day and (current_hour > 12 or (current_hour == 12 and current_minute >= 15)):
-                # Insert 60 min lunch
                 current_hour, current_minute = add_minutes_to_time(current_hour, current_minute, 60)
                 lunch_added = True
 
@@ -358,13 +417,13 @@ def generate_itinerary(
             est_hours = place.get("estimated_visit_hours", 1.5)
             visit_mins = int(est_hours * 60)
             
-            # Senior/family rest pauses
+            # Slower pacing breaks
             if is_relaxed_group and stop_idx > 0:
                 visit_mins += 15
 
             current_hour, current_minute = add_minutes_to_time(current_hour, current_minute, visit_mins)
 
-            # Check Dhanushkodi restriction (Must end by 5:30 PM)
+            # Stop notes & Dhanushkodi constraint
             stop_note = ""
             if place["id"] == "dhanushkodi":
                 if current_hour > 17 or (current_hour == 17 and current_minute > 30):
@@ -399,62 +458,126 @@ def generate_itinerary(
 
             prev_place = place
 
-        # Determine dominant zone summary for the day
+        # Dominant zone summary
         day_zones = [p.get("zone", "rameswaram_town") for p in sequenced_stops]
         dominant_zone = max(set(day_zones), key=day_zones.count) if day_zones else "rameswaram_town"
         zone_info = ZONE_METADATA.get(dominant_zone, ZONE_METADATA["rameswaram_town"])
 
         days_output.append({
             "day": day_num,
+            "is_free_day": False,
             "title": f"Day {day_num}: {zone_info['title']}",
             "zone_summary": zone_info["desc"],
             "stops": day_stops_formatted,
             "lunch_note": "12:30 PM - 01:30 PM • Traditional South Indian lunch break" if not is_half_day else None
         })
 
-    # 7. Calculate Cost Estimates
-    # Determine budget tier based on user_budget per person per day
-    daily_budget_per_person = user_budget / (max(1, travellers) * num_days)
-    if daily_budget_per_person < 1400:
+    # =========================================================================
+    # 7. COST CALCULATION (Exact breakdown using config rates)
+    # =========================================================================
+    # Handle Budget Basis: convert per-person budget to total group budget
+    raw_budget = float(user_budget or 0)
+    basis_clean = str(budget_basis).strip().lower()
+    is_per_person = (basis_clean in ["per_person", "person"])
+
+    if is_per_person:
+        group_budget = raw_budget * total_people
+    else:
+        group_budget = raw_budget
+
+    # Determine daily budget per person to pick the comfort tier
+    daily_budget_per_person = group_budget / max(1, total_people * num_days)
+    if daily_budget_per_person < TIER_THRESHOLDS["budget_max"]:
         cost_tier = "budget"
-    elif daily_budget_per_person < 3200:
+    elif daily_budget_per_person < TIER_THRESHOLDS["comfortable_max"]:
         cost_tier = "comfortable"
     else:
         cost_tier = "premium"
 
-    tier_cfg = COST_ESTIMATES[cost_tier]
-    
-    # Stay calculation (nights = days - 1, 0 for half or 1 day)
+    tier_rates = COST_RATES[cost_tier]
+
+    # Room calculation: 2 people per room (round up)
+    rooms_needed = math.ceil(total_people / 2)
+    # Nights: 0 for half-day or 1-day, otherwise day_count - 1
     nights = 0 if is_half_day else max(0, day_count - 1)
-    stay_cost = tier_cfg["stay_per_person_per_night"] * nights * travellers
+    stay_cost = rooms_needed * nights * tier_rates["stay_per_room_per_night"]
 
-    # Food calculation
-    food_cost = round(tier_cfg["food_per_person_per_day"] * num_days * travellers)
+    # Food calculation: adults full rate, children at CHILD_FOOD_RATIO
+    child_ratio = CHILD_FOOD_RATIO
+    effective_food_units = adults_count + (children_count * child_ratio)
+    food_cost = round(effective_food_units * num_days * tier_rates["food_per_adult_per_day"])
 
-    # Local transit calculation
-    base_transit = tier_cfg["transport_base_per_person_per_day"] * num_days * travellers
-    distance_transit = round(total_trip_km * TRANSPORT_COST_PER_KM_PER_PERSON * travellers)
-    transport_cost = base_transit + distance_transit
+    # Local transport calculation: 4 people per vehicle (round up)
+    vehicles_needed = math.ceil(total_people / 4)
+    # Transport base per vehicle per day (half-day gets 0.5 factor)
+    transit_days = 0.5 if is_half_day else float(day_count)
+    base_transit_cost = round(vehicles_needed * transit_days * tier_rates["transport_per_vehicle_per_day"])
+    distance_transit_cost = round(total_trip_km * TRANSPORT_PER_VEHICLE_PER_KM * vehicles_needed)
+    transport_cost = base_transit_cost + distance_transit_cost
 
-    # Entry fees
+    # Entry fees calculation:
+    # Adult: full fee. Children: check for child fee in string, else adult rate
     entry_fees_cost = 0
     for p in all_visited_places:
-        f_amt, _ = parse_entry_fee(p.get("entry_fee", ""))
-        entry_fees_cost += (f_amt * travellers)
+        adult_fee, _ = parse_entry_fee(p.get("entry_fee", ""))
+        child_fee = adult_fee  # Default fallback if children fee not explicitly separated
+        # Check if text has specific child fee pattern e.g., "Child: 10" or "Children ₹10"
+        raw_fee_str = str(p.get("entry_fee", "")).lower()
+        child_match = re.search(r"child(?:ren)?\s*[:\-₹]?\s*(\d+)", raw_fee_str)
+        if child_match:
+            try:
+                child_fee = int(child_match.group(1))
+            except (ValueError, TypeError):
+                child_fee = adult_fee
+
+        stop_entry_total = (adult_fee * adults_count) + (child_fee * children_count)
+        entry_fees_cost += stop_entry_total
 
     total_cost = stay_cost + food_cost + transport_cost + entry_fees_cost
+    cost_per_person = round(total_cost / total_people)
 
-    # 8. Budget Status & Advisory Message
-    if user_budget >= total_cost:
+    # 8. Budget Status & Specific Suggestions
+    diff = abs(round(group_budget - total_cost))
+    if total_cost <= group_budget:
         budget_status = "within budget"
-        budget_message = f"Your estimated trip cost of ₹{total_cost:,} is within your budget of ₹{int(user_budget):,}."
-    elif total_cost <= user_budget * 1.25:
+        budget_message = (
+            f"Your estimated trip cost of ₹{total_cost:,} is within your budget of ₹{int(group_budget):,}. "
+            f"You have an estimated saving of ₹{diff:,} for shopping, local prasadham, or leisure activities."
+        )
+    elif total_cost <= group_budget * 1.10:
         budget_status = "tight"
-        budget_message = f"Estimated trip cost (₹{total_cost:,}) is slightly tight compared to your ₹{int(user_budget):,} budget. Consider local vegetarian messes or shared autos."
+        budget_message = (
+            f"Estimated trip cost of ₹{total_cost:,} is slightly tight (₹{diff:,} above your ₹{int(group_budget):,} budget). "
+            f"Consider choosing local South Indian messes or auto-rickshaws to stay within your limit."
+        )
     else:
         budget_status = "over budget"
         suggested_days = max(1, day_count - 1)
-        budget_message = f"Estimated trip cost (₹{total_cost:,}) exceeds your budget of ₹{int(user_budget):,}. Consider reducing to {suggested_days} day(s) or opting for budget accommodations."
+        budget_message = (
+            f"Estimated trip cost of ₹{total_cost:,} exceeds your budget by ₹{diff:,}. "
+            f"Consider shortening your trip to {suggested_days} day(s) or switching to budget dharamshalas and lodges."
+        )
+
+    # Formula inputs for transparent "How we estimated this" UI card
+    formula_inputs = {
+        "rooms": rooms_needed,
+        "vehicles": vehicles_needed,
+        "nights": nights,
+        "days": num_days,
+        "people": total_people,
+        "adults": adults_count,
+        "children": children_count,
+        "seniors": seniors_count,
+        "tier": cost_tier,
+        "room_rate": tier_rates["stay_per_room_per_night"],
+        "adult_food_rate": tier_rates["food_per_adult_per_day"],
+        "child_food_rate": round(tier_rates["food_per_adult_per_day"] * child_ratio),
+        "vehicle_daily_rate": tier_rates["transport_per_vehicle_per_day"],
+        "budget_basis": "per person" if is_per_person else "whole group",
+        "user_input_budget": int(raw_budget),
+        "group_total_budget": int(group_budget),
+        "shortfall_or_savings": diff
+    }
 
     return {
         "days": days_output,
@@ -466,12 +589,19 @@ def generate_itinerary(
                 "entry_fees": entry_fees_cost
             },
             "total": total_cost,
-            "user_budget": int(user_budget),
+            "cost_per_person": cost_per_person,
+            "user_budget": int(group_budget),
+            "original_user_budget": int(raw_budget),
+            "budget_basis": "per person" if is_per_person else "whole group",
             "status": budget_status,
             "message": budget_message,
             "tier_used": cost_tier,
             "nights": nights,
-            "travellers": travellers
+            "travellers": total_people,
+            "adults": adults_count,
+            "children": children_count,
+            "seniors": seniors_count,
+            "formula_inputs": formula_inputs
         },
         "warnings": warnings,
         "could_not_fit": could_not_fit

@@ -68,9 +68,9 @@ def generate_reply(system_prompt: str, messages: list) -> str:
                 max_output_tokens=3000,
             )
 
-            # Candidate models: start with configured model, then fallback if transient 503 spike occurs
+            # Candidate models: start with configured model, then fallback if quota/demand limits occur
             models_to_try = [model_name]
-            for fb in ["gemini-3.5-flash", "gemini-flash-latest"]:
+            for fb in ["gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-latest"]:
                 if fb not in models_to_try:
                     models_to_try.append(fb)
 
@@ -84,24 +84,49 @@ def generate_reply(system_prompt: str, messages: list) -> str:
                         config=config,
                     )
                     if response and response.text:
+                        print(f"[AI Guide] Successfully generated response using model '{m}'.", flush=True)
                         break
                 except Exception as ex:
                     last_err = ex
-                    if "503" in str(ex) or "404" in str(ex):
+                    err_msg = str(ex)
+                    # Mask any accidental sensitive fragments
+                    clean_err = err_msg.replace(api_key, "[REDACTED]") if api_key else err_msg
+                    print(
+                        f"[AI Guide] Model '{m}' failed with {type(ex).__name__} ({clean_err[:120]}). Trying next model...",
+                        flush=True
+                    )
+                    if "429" in err_msg or "503" in err_msg or "404" in err_msg or "resource_exhausted" in err_msg.lower():
                         continue
                     raise
 
             if not response or not response.text:
                 if last_err:
-                    raise last_err
-                raise RuntimeError("Empty response received from Gemini AI.")
+                    err_lower = str(last_err).lower()
+                    if "429" in err_lower or "resource_exhausted" in err_lower or "quota" in err_lower:
+                        user_msg = "AI quota or rate limit exceeded (429). Please wait a moment or check your API quota."
+                    elif "503" in err_lower or "unavailable" in err_lower or "high demand" in err_lower:
+                        user_msg = "AI service is currently experiencing high demand (503). Please try again in a moment."
+                    elif "401" in err_lower or "403" in err_lower or "api_key_invalid" in err_lower:
+                        user_msg = "AI API key authentication failed (401/403). Please check AI_API_KEY in backend/.env."
+                    elif "connect" in err_lower or "getaddrinfo" in err_lower:
+                        user_msg = "Cannot connect to AI service. Please verify server internet connectivity."
+                    else:
+                        user_msg = f"AI service error: {type(last_err).__name__}"
+
+                    print(f"[AI Guide Failure] All model attempts failed. Reason: {user_msg}", flush=True)
+                    raise RuntimeError(user_msg)
+
+                raise RuntimeError("Empty response received from AI model.")
 
             return response.text.strip()
 
+        except RuntimeError:
+            raise
         except Exception as e:
-            # Never print or leak the API key in logs
-            logger.error(f"Gemini API invocation error: {type(e).__name__} - {str(e)[:200]}")
-            raise RuntimeError("The AI guide is temporarily unavailable. Please try again in a moment.")
+            err_str = str(e)
+            clean_err = err_str.replace(api_key, "[REDACTED]") if api_key else err_str
+            print(f"[AI Guide Error] Gemini invocation failed: {type(e).__name__} - {clean_err[:150]}", flush=True)
+            raise RuntimeError(f"AI guide unavailable: {type(e).__name__}")
 
     # 2. Anthropic Claude Provider
     elif provider == "claude":

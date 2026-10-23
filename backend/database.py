@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import json
+from typing import Optional, List, Tuple, Dict, Any
 from datetime import datetime
 from pathlib import Path
 from config import DATABASE_PATH, ADMIN_EMAILS
@@ -111,6 +112,23 @@ def init_db():
         PRIMARY KEY (user_id, plan_hash),
         FOREIGN KEY (user_id) REFERENCES users(user_id)
     );
+    """)
+
+    # 6. Saved plans table (stores user saved itineraries & AI narrations)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS saved_plans (
+        plan_id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        trip_json TEXT NOT NULL,
+        plan_json TEXT NOT NULL,
+        narration_json TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(user_id)
+    );
+    """)
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS idx_saved_plans_user ON saved_plans(user_id, created_at DESC);
     """)
 
     conn.commit()
@@ -509,5 +527,383 @@ def save_plan_narration(user_id: int, plan_hash: str, narration_data: dict):
         conn.close()
     except Exception as e:
         print(f"Error caching plan narration: {e}")
+
+# -------------------------------------------------------------
+# SAVED PLANS HELPERS
+# -------------------------------------------------------------
+def count_user_saved_plans(user_id: int) -> int:
+    """Returns the total number of plans saved by a specific user."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM saved_plans WHERE user_id = ?", (user_id,))
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
+
+def save_user_plan(plan_id: str, user_id: int, title: str, trip: dict, plan: dict, narration: Optional[dict] = None) -> bool:
+    """Inserts a new saved plan record for the user."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO saved_plans (plan_id, user_id, title, trip_json, plan_json, narration_json)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (
+        plan_id,
+        user_id,
+        title,
+        json.dumps(trip or {}),
+        json.dumps(plan or {}),
+        json.dumps(narration) if narration else None
+    ))
+    conn.commit()
+    conn.close()
+    return True
+
+def get_user_saved_plans(user_id: int) -> list:
+    """Returns all plans saved by the user, sorted newest first."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT plan_id, user_id, title, trip_json, plan_json, narration_json, created_at
+        FROM saved_plans
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+    """, (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+
+    results = []
+    for r in rows:
+        trip = {}
+        plan = {}
+        narration = None
+        try:
+            trip = json.loads(r["trip_json"])
+        except Exception:
+            pass
+        try:
+            plan = json.loads(r["plan_json"])
+        except Exception:
+            pass
+        if r["narration_json"]:
+            try:
+                narration = json.loads(r["narration_json"])
+            except Exception:
+                pass
+
+        days_list = plan.get("days", []) if isinstance(plan, dict) else []
+        days_count = len(days_list) if len(days_list) > 0 else (trip.get("days") or 1)
+        stops_count = sum(len(d.get("stops", [])) for d in days_list if isinstance(d, dict))
+        budget_info = plan.get("budget", {}) if isinstance(plan, dict) else {}
+        budget_total = budget_info.get("total") or trip.get("budget") or 0
+
+        results.append({
+            "plan_id": r["plan_id"],
+            "user_id": r["user_id"],
+            "title": r["title"],
+            "created_at": r["created_at"],
+            "days_count": days_count,
+            "stops_count": stops_count,
+            "budget": budget_total,
+            "trip": trip,
+            "plan": plan,
+            "narration": narration
+        })
+    return results
+
+def get_user_saved_plan_by_id(plan_id: str, user_id: int) -> Optional[dict]:
+    """Retrieves a single saved plan if it belongs to the user; otherwise returns None."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT plan_id, user_id, title, trip_json, plan_json, narration_json, created_at
+        FROM saved_plans
+        WHERE plan_id = ? AND user_id = ?
+    """, (plan_id, user_id))
+    r = cursor.fetchone()
+    conn.close()
+    if not r:
+        return None
+
+    trip = {}
+    plan = {}
+    narration = None
+    try:
+        trip = json.loads(r["trip_json"])
+    except Exception:
+        pass
+    try:
+        plan = json.loads(r["plan_json"])
+    except Exception:
+        pass
+    if r["narration_json"]:
+        try:
+            narration = json.loads(r["narration_json"])
+        except Exception:
+            pass
+
+    return {
+        "plan_id": r["plan_id"],
+        "user_id": r["user_id"],
+        "title": r["title"],
+        "created_at": r["created_at"],
+        "trip": trip,
+        "plan": plan,
+        "narration": narration
+    }
+
+def delete_user_saved_plan_by_id(plan_id: str, user_id: int) -> bool:
+    """Deletes a saved plan owned by the user. Returns True if deleted, False if not found."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM saved_plans WHERE plan_id = ? AND user_id = ?", (plan_id, user_id))
+    affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return affected > 0
+
+# -------------------------------------------------------------
+# ADMIN DASHBOARD & AUDIT HELPERS
+# -------------------------------------------------------------
+def get_admin_dashboard_stats() -> dict:
+    """
+    Returns platform-wide summary metrics for administrator dashboard:
+    - total users
+    - new users registered in the last 7 days
+    - total successful logins
+    - failed login attempts in the last 24 hours
+    - total saved plans
+    - total chat questions asked
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(*) FROM users;")
+    total_users = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM users WHERE created_at >= datetime('now', '-7 days');")
+    new_users_7d = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM login_logs WHERE success = 1;")
+    total_logins = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM login_logs WHERE success = 0 AND login_time >= datetime('now', '-24 hours');")
+    failed_logins_24h = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM saved_plans;")
+    total_saved_plans = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM chat_logs;")
+    total_chat_questions = cursor.fetchone()[0]
+
+    conn.close()
+
+    return {
+        "total_users": total_users,
+        "new_users_7d": new_users_7d,
+        "total_logins": total_logins,
+        "failed_logins_24h": failed_logins_24h,
+        "total_saved_plans": total_saved_plans,
+        "total_chat_questions": total_chat_questions
+    }
+
+def get_admin_users_list(page: int = 1, limit: int = 15, search: Optional[str] = None) -> tuple:
+    """
+    Returns paginated user list with total count and successful login count.
+    NEVER includes password_hash.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    offset = max(0, (page - 1) * limit)
+
+    params = []
+    where_clause = ""
+    if search and search.strip():
+        term = f"%{search.strip().lower()}%"
+        where_clause = "WHERE LOWER(u.username) LIKE ? OR LOWER(u.email) LIKE ?"
+        params.extend([term, term])
+
+    # Count total matching users
+    count_sql = f"SELECT COUNT(*) FROM users u {where_clause}"
+    cursor.execute(count_sql, params)
+    total_count = cursor.fetchone()[0]
+
+    # Fetch users with login count subquery
+    data_sql = f"""
+        SELECT u.user_id, u.username, u.email, u.created_at, u.last_login, u.is_admin,
+               (SELECT COUNT(*) FROM login_logs l WHERE l.user_id = u.user_id AND l.success = 1) AS login_count
+        FROM users u
+        {where_clause}
+        ORDER BY u.created_at DESC
+        LIMIT ? OFFSET ?
+    """
+    cursor.execute(data_sql, params + [limit, offset])
+    rows = cursor.fetchall()
+    conn.close()
+
+    users = [
+        {
+            "user_id": r["user_id"],
+            "username": r["username"],
+            "email": r["email"],
+            "created_at": r["created_at"],
+            "last_login": r["last_login"],
+            "is_admin": bool(r["is_admin"]),
+            "login_count": r["login_count"]
+        }
+        for r in rows
+    ]
+
+    return users, total_count
+
+def get_admin_login_logs_list(
+    page: int = 1,
+    limit: int = 20,
+    success: Optional[bool] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
+) -> tuple:
+    """
+    Returns paginated login audit logs, newest first, with optional status and date filters.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    offset = max(0, (page - 1) * limit)
+
+    where_parts = []
+    params = []
+
+    if success is not None:
+        where_parts.append("l.success = ?")
+        params.append(1 if success else 0)
+
+    if start_date:
+        where_parts.append("l.login_time >= ?")
+        params.append(start_date)
+
+    if end_date:
+        where_parts.append("l.login_time <= ?")
+        params.append(end_date)
+
+    where_sql = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
+
+    # Total count
+    count_sql = f"SELECT COUNT(*) FROM login_logs l {where_sql}"
+    cursor.execute(count_sql, params)
+    total_count = cursor.fetchone()[0]
+
+    # Data
+    data_sql = f"""
+        SELECT l.log_id, l.user_id, u.username, l.email_attempted, l.login_time AS time, l.success
+        FROM login_logs l
+        LEFT JOIN users u ON l.user_id = u.user_id
+        {where_sql}
+        ORDER BY l.log_id DESC
+        LIMIT ? OFFSET ?
+    """
+    cursor.execute(data_sql, params + [limit, offset])
+    rows = cursor.fetchall()
+    conn.close()
+
+    logs = [
+        {
+            "log_id": r["log_id"],
+            "user_id": r["user_id"],
+            "username": r["username"] or "Unregistered / Unknown",
+            "email_attempted": r["email_attempted"],
+            "time": r["time"],
+            "success": bool(r["success"])
+        }
+        for r in rows
+    ]
+
+    return logs, total_count
+
+def get_admin_chat_logs_list(page: int = 1, limit: int = 20) -> tuple:
+    """
+    Returns paginated chat questions asked to Solvane guide.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    offset = max(0, (page - 1) * limit)
+
+    cursor.execute("SELECT COUNT(*) FROM chat_logs;")
+    total_count = cursor.fetchone()[0]
+
+    data_sql = """
+        SELECT c.log_id, c.user_id, u.username, u.email, c.question, c.created_at AS time
+        FROM chat_logs c
+        LEFT JOIN users u ON c.user_id = u.user_id
+        ORDER BY c.log_id DESC
+        LIMIT ? OFFSET ?
+    """
+    cursor.execute(data_sql, (limit, offset))
+    rows = cursor.fetchall()
+    conn.close()
+
+    questions = [
+        {
+            "log_id": r["log_id"],
+            "user_id": r["user_id"],
+            "username": r["username"] or f"User #{r['user_id']}",
+            "email": r["email"] or "",
+            "question": r["question"],
+            "time": r["time"]
+        }
+        for r in rows
+    ]
+
+    return questions, total_count
+
+def get_admin_all_users_for_export() -> list:
+    """Returns all users for CSV export. Never includes password hashes."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT u.user_id, u.username, u.email, u.created_at, u.last_login, u.is_admin,
+               (SELECT COUNT(*) FROM login_logs l WHERE l.user_id = u.user_id AND l.success = 1) AS login_count
+        FROM users u
+        ORDER BY u.created_at ASC
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        {
+            "user_id": r["user_id"],
+            "username": r["username"],
+            "email": r["email"],
+            "created_at": r["created_at"],
+            "last_login": r["last_login"] or "",
+            "is_admin": "Yes" if r["is_admin"] else "No",
+            "login_count": r["login_count"]
+        }
+        for r in rows
+    ]
+
+def get_admin_all_login_logs_for_export() -> list:
+    """Returns login audit logs for CSV export."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT l.log_id, l.user_id, u.username, l.email_attempted, l.login_time, l.success
+        FROM login_logs l
+        LEFT JOIN users u ON l.user_id = u.user_id
+        ORDER BY l.log_id DESC
+        LIMIT 5000
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        {
+            "log_id": r["log_id"],
+            "user_id": r["user_id"] or "",
+            "username": r["username"] or "",
+            "email_attempted": r["email_attempted"],
+            "success": "Success" if r["success"] else "Failed",
+            "login_time": r["login_time"]
+        }
+        for r in rows
+    ]
+
 
 

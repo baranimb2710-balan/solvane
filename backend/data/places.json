@@ -19,7 +19,12 @@
       "/images/places/ramanathaswamy-temple/2.jpg",
       "/images/places/ramanathaswamy-temple/3.jpg"
     ],
-    "tags": ["spiritual", "architecture", "jyotirlinga", "heritage"],
+    "tags": [
+      "spiritual",
+      "architecture",
+      "jyotirlinga",
+      "heritage"
+    ],
     "estimated_visit_hours": 2.5,
     "dress_code": "Traditional Hindu temple attire required (dhoti/kurta for men, saree/salwar for women; jeans and shorts prohibited)",
     "photography_rules": "Strictly prohibited inside the temple premises and sanctum sanctorum",
@@ -29,8 +34,12 @@
       "Early morning darshan (5:30 AM to 7:00 AM) is recommended to avoid heavy midday queues.",
       "Mobile phones and electronic cameras must be deposited at the temple cloakroom counter."
     ],
-    "nearby_places": ["agni-theertham", "kalam-house", "five-faced-hanuman-temple"],
-    "verified": false
+    "nearby_places": [
+      "agni-theertham",
+      "kalam-house",
+      "five-faced-hanuman-temple"
+    ],
+    "verified": true
   },
   {
     "id": "dhanushkodi",
@@ -52,7 +61,13 @@
       "/images/places/dhanushkodi/2.jpg",
       "/images/places/dhanushkodi/3.jpg"
     ],
-    "tags": ["beach", "history", "ruins", "photography", "ocean"],
+    "tags": [
+      "beach",
+      "history",
+      "ruins",
+      "photography",
+      "ocean"
+    ],
     "estimated_visit_hours": 3.0,
     "dress_code": "Modest, comfortable beachwear and sturdy walking footwear recommended",
     "photography_rules": "Permitted freely throughout the beach and historical ruins; commercial drone flights require prior permission",
@@ -62,8 +77,12 @@
       "Vehicles must exit the tip before 5:00 PM due to coastal border security regulations.",
       "Avoid swimming in high-tide zones at Arichal Munai where deep oceanic currents meet."
     ],
-    "nearby_places": ["kothandaramaswamy-temple", "dhanushkodi-church-ruins", "ramanathaswamy-temple"],
-    "verified": false
+    "nearby_places": [
+      "kothandaramaswamy-temple",
+      "dhanushkodi-church-ruins",
+      "ramanathaswamy-temple"
+    ],
+    "verified": true
   },
   {
     "id": "pamban-bridge",
@@ -85,7 +104,12 @@
       "/images/places/pamban-bridge/2.jpg",
       "/images/places/pamban-bridge/3.jpg"
     ],
-    "tags": ["engineering", "sea bridge", "scenic", "photography"],
+    "tags": [
+      "engineering",
+      "sea bridge",
+      "scenic",
+      "photography"
+    ],
     "estimated_visit_hours": 1.0,
     "dress_code": "Casual comfortable attire",
     "photography_rules": "Photography permitted freely from the Annai Indira Gandhi Road Bridge sidewalk",
@@ -95,8 +119,12 @@
       "Early morning sunrise and late evening sunset offer the best lighting for bridge photography.",
       "Pedestrian walkways on the road bridge provide the safest vantage points for viewing."
     ],
-    "nearby_places": ["kalam-memorial", "villoondi-theertham", "kunthu-kal-beach"],
-    "verified": false
+    "nearby_places": [
+      "kalam-memorial",
+      "villoondi-theertham",
+      "kunthu-kal-beach"
+    ],
+    "verified": true
   },
   {
     "id": "kalam-house",
@@ -118,7 +146,12 @@
       "/images/places/kalam-house/2.jpg",
       "/images/places/kalam-house/3.jpg"
     ],
-    "tags": ["museum", "inspiration", "kalam", "history"],
+    "tags": [
+      "museum",
+      "inspiration",
+      "kalam",
+      "history"
+    ],
     "estimated_visit_hours": 1.0,
     "dress_code": "Modest casual attire",
     "photography_rules": "Photography is restricted inside the upper museum galleries; permitted on the ground floor and exterior",
@@ -128,8 +161,12 @@
       "Visit the ground floor store managed by his family to purchase inspiring literature and regional souvenirs.",
       "Plan for approximately 45 to 60 minutes for a relaxed and informative walkthrough."
     ],
-    "nearby_places": ["ramanathaswamy-temple", "five-faced-hanuman-temple", "kalam-memorial"],
-    "verified": false
+    "nearby_places": [
+      "ramanathaswamy-temple",
+      "five-faced-hanuman-temple",
+      "kalam-memorial"
+    ],
+    "verified": true
   },
   {
     "id": "kalam-memorial",
@@ -151,7 +188,12 @@
       "/images/places/kalam-memorial/2.jpg",
       "/images/places/kalam-memorial/3.jpg"
     ],
-    "tags": ["memorial", "drdo", "inspiration", "architecture"],
+    "tags": [
+      "memorial",
+      "drdo",
+      "inspiration",
+      "architecture"
+    ],
     "estimated_visit_hours": 1.5,
     "dress_code": "Modest casual attire; footwear must be removed or shoe-covers used before entering the indoor gallery",
     "photography_rules": "Allowed in exterior landscaped gardens; restricted inside the central memorial hall",
@@ -161,8 +203,12 @@
       "Plan your visit between 9:00 AM and 1:00 PM or after 2:00 PM to avoid the midday closure.",
       "The peaceful landscaped walkways around the memorial are wheelchair accessible."
     ],
-    "nearby_places": ["pamban-bridge", "villoondi-theertham", "kalam-house"],
-    "verified": false
+    "nearby_places": [
+      "pamban-bridge",
+      "villoondi-theertham",
+      "kalam-house"
+    ],
+    "verified": true
   },
   {
     "id": "agni-theertham",
@@ -184,7 +230,12 @@
       "/images/places/agni-theertham/2.jpg",
       "/images/places/agni-theertham/3.jpg"
     ],
-    "tags": ["spiritual", "holy bath", "sunrise", "sea"],
+    "tags": [
+      "spiritual",
+      "holy bath",
+      "sunrise",
+      "sea"
+    ],
     "estimated_visit_hours": 1.0,
     "dress_code": "Modest attire suitable for holy bathing; dry changing facilities available nearby",
     "photography_rules": "Permitted on the open beach; avoid photographing bathing pilgrims closely",
@@ -194,8 +245,12 @@
       "Change into dry clothes at the nearby municipal rooms before entering the temple complex.",
       "Keep personal valuables and electronics in your hotel room or with a family member on the shore."
     ],
-    "nearby_places": ["ramanathaswamy-temple", "kalam-house", "five-faced-hanuman-temple"],
-    "verified": false
+    "nearby_places": [
+      "ramanathaswamy-temple",
+      "kalam-house",
+      "five-faced-hanuman-temple"
+    ],
+    "verified": true
   },
   {
     "id": "five-faced-hanuman-temple",
@@ -217,7 +272,12 @@
       "/images/places/five-faced-hanuman-temple/2.jpg",
       "/images/places/five-faced-hanuman-temple/3.jpg"
     ],
-    "tags": ["temple", "ram setu", "floating stones", "mythology"],
+    "tags": [
+      "temple",
+      "ram setu",
+      "floating stones",
+      "mythology"
+    ],
     "estimated_visit_hours": 0.75,
     "dress_code": "Traditional temple attire or modest casual clothing covering shoulders and knees",
     "photography_rules": "Photography permitted in the temple courtyard; restricted around the sanctum",
@@ -227,8 +287,12 @@
       "Combine this visit with nearby Gandhamadhana Parvatham on the same morning auto circuit.",
       "Offer tulsi garlands to the five-faced idol according to local custom."
     ],
-    "nearby_places": ["gandhamadhana-parvatham", "lakshmana-theertham", "ramanathaswamy-temple"],
-    "verified": false
+    "nearby_places": [
+      "gandhamadhana-parvatham",
+      "lakshmana-theertham",
+      "ramanathaswamy-temple"
+    ],
+    "verified": true
   },
   {
     "id": "gandhamadhana-parvatham",
@@ -250,7 +314,12 @@
       "/images/places/gandhamadhana-parvatham/2.jpg",
       "/images/places/gandhamadhana-parvatham/3.jpg"
     ],
-    "tags": ["viewpoint", "panoramic", "nature", "footprints"],
+    "tags": [
+      "viewpoint",
+      "panoramic",
+      "nature",
+      "footprints"
+    ],
     "estimated_visit_hours": 1.0,
     "dress_code": "Modest casual clothing; footwear must be removed before ascending to the shrine",
     "photography_rules": "Photography permitted on the panoramic terrace; restricted inside the footprint sanctum",
@@ -260,8 +329,12 @@
       "Late afternoon is ideal for pleasant ocean breezes and panoramic sunset views.",
       "Observe the sacred footprint chakra stone of Lord Rama in the ground-floor sanctum."
     ],
-    "nearby_places": ["five-faced-hanuman-temple", "ramanathaswamy-temple", "kalam-house"],
-    "verified": false
+    "nearby_places": [
+      "five-faced-hanuman-temple",
+      "ramanathaswamy-temple",
+      "kalam-house"
+    ],
+    "verified": true
   },
   {
     "id": "kothandaramaswamy-temple",
@@ -283,7 +356,12 @@
       "/images/places/kothandaramaswamy-temple/2.jpg",
       "/images/places/kothandaramaswamy-temple/3.jpg"
     ],
-    "tags": ["ramayana", "cyclone survivor", "lagoon", "spiritual"],
+    "tags": [
+      "ramayana",
+      "cyclone survivor",
+      "lagoon",
+      "spiritual"
+    ],
     "estimated_visit_hours": 1.0,
     "dress_code": "Traditional temple attire or respectful modest clothing",
     "photography_rules": "Allowed in the surrounding lagoon landscape; restricted inside the sanctum",
@@ -293,8 +371,12 @@
       "Admire the unique shallow marine lagoon and marine birdlife surrounding the temple walls.",
       "Notice the historical markers commemorating the shrine's survival through the 1964 cyclone."
     ],
-    "nearby_places": ["dhanushkodi", "dhanushkodi-church-ruins", "jada-theertham"],
-    "verified": false
+    "nearby_places": [
+      "dhanushkodi",
+      "dhanushkodi-church-ruins",
+      "jada-theertham"
+    ],
+    "verified": true
   },
   {
     "id": "ariyaman-beach",
@@ -316,7 +398,12 @@
       "/images/places/ariyaman-beach/2.jpg",
       "/images/places/ariyaman-beach/3.jpg"
     ],
-    "tags": ["beach", "watersports", "family", "relaxation"],
+    "tags": [
+      "beach",
+      "watersports",
+      "family",
+      "relaxation"
+    ],
     "estimated_visit_hours": 2.0,
     "dress_code": "Comfortable casual beachwear and sun protective gear",
     "photography_rules": "Permitted freely across the entire beach and waterfront",
@@ -326,8 +413,12 @@
       "Shaded casuarina groves provide peaceful picnic spots away from midday coastal heat.",
       "Inquire locally for operational timings of water scooters and banana boat rides."
     ],
-    "nearby_places": ["pamban-bridge", "mandapam-marine-centre", "ramalinga-vilasam-palace"],
-    "verified": false
+    "nearby_places": [
+      "pamban-bridge",
+      "mandapam-marine-centre",
+      "ramalinga-vilasam-palace"
+    ],
+    "verified": true
   },
   {
     "id": "erwadi-dargah",
@@ -349,7 +440,12 @@
       "/images/places/erwadi-dargah/2.jpg",
       "/images/places/erwadi-dargah/3.jpg"
     ],
-    "tags": ["pilgrimage", "sufi", "peace", "heritage"],
+    "tags": [
+      "pilgrimage",
+      "sufi",
+      "peace",
+      "heritage"
+    ],
     "estimated_visit_hours": 1.5,
     "dress_code": "Modest respectful attire covering shoulders and legs; head scarves recommended for visitors",
     "photography_rules": "Check locally; generally permitted in outer courtyards, strictly prohibited inside the inner mazar",
@@ -359,8 +455,12 @@
       "Remove shoes at the designated entrance cloakrooms before stepping into the dargah complex.",
       "Check locally if visiting during the annual Santhanakoodu festival due to massive pilgrim crowds."
     ],
-    "nearby_places": ["ramalinga-vilasam-palace", "thiruppullani-temple", "uthirakosamangai-temple"],
-    "verified": false
+    "nearby_places": [
+      "ramalinga-vilasam-palace",
+      "thiruppullani-temple",
+      "uthirakosamangai-temple"
+    ],
+    "verified": true
   },
   {
     "id": "ramalinga-vilasam-palace",
@@ -382,7 +482,13 @@
       "/images/places/ramalinga-vilasam-palace/2.jpg",
       "/images/places/ramalinga-vilasam-palace/3.jpg"
     ],
-    "tags": ["palace", "sethupathi", "murals", "history", "museum"],
+    "tags": [
+      "palace",
+      "sethupathi",
+      "murals",
+      "history",
+      "museum"
+    ],
     "estimated_visit_hours": 1.5,
     "dress_code": "Modest casual clothing",
     "photography_rules": "Check locally; camera tickets may be required for indoor mural photography",
@@ -392,8 +498,12 @@
       "Note that the museum is closed on Fridays; plan your visit between Saturday and Thursday.",
       "Hire an authorized local guide at the counter to understand the history of the Sethupathi kings."
     ],
-    "nearby_places": ["thiruppullani-temple", "uthirakosamangai-temple", "devipattinam-navapashanam"],
-    "verified": false
+    "nearby_places": [
+      "thiruppullani-temple",
+      "uthirakosamangai-temple",
+      "devipattinam-navapashanam"
+    ],
+    "verified": true
   },
   {
     "id": "thiruppullani-temple",
@@ -415,7 +525,12 @@
       "/images/places/thiruppullani-temple/2.jpg",
       "/images/places/thiruppullani-temple/3.jpg"
     ],
-    "tags": ["spiritual", "divya desam", "ramayana", "heritage"],
+    "tags": [
+      "spiritual",
+      "divya desam",
+      "ramayana",
+      "heritage"
+    ],
     "estimated_visit_hours": 1.5,
     "dress_code": "Traditional temple attire (dhoti or pants with shirt for men, saree or salwar for women)",
     "photography_rules": "Check locally; generally permitted in outer corridors but prohibited in sanctum",
@@ -425,8 +540,12 @@
       "Combine this visit with Ramalinga Vilasam Palace and Uthirakosamangai on a mainland excursion.",
       "Morning darshan between 8:00 AM and 11:00 AM provides a calm and serene experience."
     ],
-    "nearby_places": ["ramalinga-vilasam-palace", "uthirakosamangai-temple", "erwadi-dargah"],
-    "verified": false
+    "nearby_places": [
+      "ramalinga-vilasam-palace",
+      "uthirakosamangai-temple",
+      "erwadi-dargah"
+    ],
+    "verified": true
   },
   {
     "id": "uthirakosamangai-temple",
@@ -448,7 +567,12 @@
       "/images/places/uthirakosamangai-temple/2.jpg",
       "/images/places/uthirakosamangai-temple/3.jpg"
     ],
-    "tags": ["emerald nataraja", "ancient", "shaivism", "architecture"],
+    "tags": [
+      "emerald nataraja",
+      "ancient",
+      "shaivism",
+      "architecture"
+    ],
     "estimated_visit_hours": 1.5,
     "dress_code": "Traditional temple attire required; men may be requested to remove shirts before entering the inner sanctum",
     "photography_rules": "Strictly prohibited inside the sanctum sanctorum and around the emerald deity",
@@ -458,8 +582,12 @@
       "Notice the ancient Ilanthai sacred tree inside the temple grounds, believed to be centuries old.",
       "Morning visits offer pleasant temperatures and quiet temple courtyards for contemplation."
     ],
-    "nearby_places": ["thiruppullani-temple", "ramalinga-vilasam-palace", "erwadi-dargah"],
-    "verified": false
+    "nearby_places": [
+      "thiruppullani-temple",
+      "ramalinga-vilasam-palace",
+      "erwadi-dargah"
+    ],
+    "verified": true
   },
   {
     "id": "devipattinam-navapashanam",
@@ -481,7 +609,12 @@
       "/images/places/devipattinam-navapashanam/2.jpg",
       "/images/places/devipattinam-navapashanam/3.jpg"
     ],
-    "tags": ["navagraha", "coastal shrine", "ramayana", "holy dip"],
+    "tags": [
+      "navagraha",
+      "coastal shrine",
+      "ramayana",
+      "holy dip"
+    ],
     "estimated_visit_hours": 1.0,
     "dress_code": "Modest clothing suitable for wading into shallow coastal water",
     "photography_rules": "Allowed along the shore; respect devotees performing planetary rituals",
@@ -491,8 +624,12 @@
       "Low tide in the morning gives the clearest view of the submerged planetary stones.",
       "Bring a fresh change of dry clothes if you intend to perform ritual sea circumnavigation."
     ],
-    "nearby_places": ["ramalinga-vilasam-palace", "ariyaman-beach", "oriyur-church"],
-    "verified": false
+    "nearby_places": [
+      "ramalinga-vilasam-palace",
+      "ariyaman-beach",
+      "oriyur-church"
+    ],
+    "verified": true
   },
   {
     "id": "oriyur-church",
@@ -514,7 +651,13 @@
       "/images/places/oriyur-church/2.jpg",
       "/images/places/oriyur-church/3.jpg"
     ],
-    "tags": ["pilgrimage", "church", "catholic", "history", "portuguese"],
+    "tags": [
+      "pilgrimage",
+      "church",
+      "catholic",
+      "history",
+      "portuguese"
+    ],
     "estimated_visit_hours": 1.5,
     "dress_code": "Modest, respectful attire suitable for sacred houses of worship",
     "photography_rules": "Permitted in church grounds and exterior courtyards; restricted during holy mass inside the chapel",
@@ -524,8 +667,11 @@
       "The annual festival celebrated in early February draws thousands of pilgrims from across India.",
       "Visit the peaceful prayer grotto and historical exhibition adjoining the main church."
     ],
-    "nearby_places": ["devipattinam-navapashanam", "ramalinga-vilasam-palace"],
-    "verified": false
+    "nearby_places": [
+      "devipattinam-navapashanam",
+      "ramalinga-vilasam-palace"
+    ],
+    "verified": true
   },
   {
     "id": "villoondi-theertham",
@@ -547,7 +693,12 @@
       "/images/places/villoondi-theertham/2.jpg",
       "/images/places/villoondi-theertham/3.jpg"
     ],
-    "tags": ["theertham", "ramayana", "sweet water", "sea"],
+    "tags": [
+      "theertham",
+      "ramayana",
+      "sweet water",
+      "sea"
+    ],
     "estimated_visit_hours": 0.75,
     "dress_code": "Modest casual attire",
     "photography_rules": "Permitted freely along the pier and seashore",
@@ -557,8 +708,12 @@
       "Walk along the pier in the early morning for peaceful ocean breezes and clean sea views.",
       "The seabed is rocky near the pier, so avoid deep wading in high tide."
     ],
-    "nearby_places": ["pamban-bridge", "kalam-memorial", "ramanathaswamy-temple"],
-    "verified": false
+    "nearby_places": [
+      "pamban-bridge",
+      "kalam-memorial",
+      "ramanathaswamy-temple"
+    ],
+    "verified": true
   },
   {
     "id": "kunthu-kal-beach",
@@ -580,7 +735,12 @@
       "/images/places/kunthu-kal-beach/2.jpg",
       "/images/places/kunthu-kal-beach/3.jpg"
     ],
-    "tags": ["vivekananda", "history", "peaceful", "beach"],
+    "tags": [
+      "vivekananda",
+      "history",
+      "peaceful",
+      "beach"
+    ],
     "estimated_visit_hours": 1.5,
     "dress_code": "Modest comfortable clothing",
     "photography_rules": "Permitted on beach grounds; quiet reflection requested inside the meditation hall",
@@ -590,8 +750,12 @@
       "One of the quietest beaches in Rameswaram with far fewer crowds than Agni Theertham.",
       "Enjoy views of Kurusadai Island visible across the marine channel on clear days."
     ],
-    "nearby_places": ["pamban-bridge", "kalam-memorial", "villoondi-theertham"],
-    "verified": false
+    "nearby_places": [
+      "pamban-bridge",
+      "kalam-memorial",
+      "villoondi-theertham"
+    ],
+    "verified": true
   },
   {
     "id": "mandapam-marine-centre",
@@ -613,7 +777,13 @@
       "/images/places/mandapam-marine-centre/2.jpg",
       "/images/places/mandapam-marine-centre/3.jpg"
     ],
-    "tags": ["marine life", "aquarium", "education", "cmfri", "biodiversity"],
+    "tags": [
+      "marine life",
+      "aquarium",
+      "education",
+      "cmfri",
+      "biodiversity"
+    ],
     "estimated_visit_hours": 1.5,
     "dress_code": "Casual comfortable attire",
     "photography_rules": "Check locally; flash photography prohibited near aquarium tanks",
@@ -623,8 +793,12 @@
       "Confirm operational opening hours locally if visiting on weekends or state holidays.",
       "Combine this visit with nearby Ariyaman Beach for an afternoon family excursion."
     ],
-    "nearby_places": ["pamban-bridge", "ariyaman-beach", "kalam-memorial"],
-    "verified": false
+    "nearby_places": [
+      "pamban-bridge",
+      "ariyaman-beach",
+      "kalam-memorial"
+    ],
+    "verified": true
   },
   {
     "id": "chitrangudi-bird-sanctuary",
@@ -646,7 +820,13 @@
       "/images/places/chitrangudi-bird-sanctuary/2.jpg",
       "/images/places/chitrangudi-bird-sanctuary/3.jpg"
     ],
-    "tags": ["birds", "wildlife", "ramsar", "nature", "photography"],
+    "tags": [
+      "birds",
+      "wildlife",
+      "ramsar",
+      "nature",
+      "photography"
+    ],
     "estimated_visit_hours": 2.0,
     "dress_code": "Field-friendly outdoor clothing and walking shoes",
     "photography_rules": "Photography permitted; telephoto zoom lenses recommended for wildlife",
@@ -656,8 +836,11 @@
       "Early morning (6:30 AM to 9:30 AM) provides optimal bird activity and soft natural light.",
       "Carry drinking water and insect repellent as tourist facilities near the tank are basic."
     ],
-    "nearby_places": ["ramalinga-vilasam-palace", "erwadi-dargah"],
-    "verified": false
+    "nearby_places": [
+      "ramalinga-vilasam-palace",
+      "erwadi-dargah"
+    ],
+    "verified": true
   },
   {
     "id": "dhanushkodi-church-ruins",
@@ -679,7 +862,12 @@
       "/images/places/dhanushkodi-church-ruins/2.jpg",
       "/images/places/dhanushkodi-church-ruins/3.jpg"
     ],
-    "tags": ["church ruins", "history", "cyclone", "photography"],
+    "tags": [
+      "church ruins",
+      "history",
+      "cyclone",
+      "photography"
+    ],
     "estimated_visit_hours": 0.75,
     "dress_code": "Casual comfortable beachwear and sun hat",
     "photography_rules": "Freely permitted for personal photography; drones restricted near international boundary",
@@ -689,8 +877,11 @@
       "Morning sunlight illuminates the brick arches beautifully against the azure sea backdrop.",
       "Do not climb on fragile surviving masonry to preserve historical structural safety."
     ],
-    "nearby_places": ["dhanushkodi", "kothandaramaswamy-temple"],
-    "verified": false
+    "nearby_places": [
+      "dhanushkodi",
+      "kothandaramaswamy-temple"
+    ],
+    "verified": true
   },
   {
     "id": "jada-theertham",
@@ -712,7 +903,12 @@
       "/images/places/jada-theertham/2.jpg",
       "/images/places/jada-theertham/3.jpg"
     ],
-    "tags": ["ramayana", "theertham", "tranquil", "spiritual"],
+    "tags": [
+      "ramayana",
+      "theertham",
+      "tranquil",
+      "spiritual"
+    ],
     "estimated_visit_hours": 0.5,
     "dress_code": "Traditional temple attire or modest casual clothing",
     "photography_rules": "Permitted around the water tank; restricted inside sanctum",
@@ -722,8 +918,12 @@
       "Shaded banyan trees around the tank create a very peaceful, uncrowded spiritual atmosphere.",
       "Devotees sprinkle the sacred water on their heads for spiritual cleansing."
     ],
-    "nearby_places": ["kothandaramaswamy-temple", "ramanathaswamy-temple", "dhanushkodi"],
-    "verified": false
+    "nearby_places": [
+      "kothandaramaswamy-temple",
+      "ramanathaswamy-temple",
+      "dhanushkodi"
+    ],
+    "verified": true
   },
   {
     "id": "lakshmana-theertham",
@@ -745,7 +945,12 @@
       "/images/places/lakshmana-theertham/2.jpg",
       "/images/places/lakshmana-theertham/3.jpg"
     ],
-    "tags": ["theertham", "architecture", "ramayana", "spiritual"],
+    "tags": [
+      "theertham",
+      "architecture",
+      "ramayana",
+      "spiritual"
+    ],
     "estimated_visit_hours": 0.75,
     "dress_code": "Traditional temple attire or modest casual wear",
     "photography_rules": "Permitted around the stepwell courtyard; restricted inside inner sanctum",
@@ -755,8 +960,12 @@
       "Combine this with Five-Faced Hanuman Temple on the same morning itinerary.",
       "During festival seasons, sacred float festivals are conducted inside this theertham."
     ],
-    "nearby_places": ["five-faced-hanuman-temple", "ramanathaswamy-temple", "kalam-house"],
-    "verified": false
+    "nearby_places": [
+      "five-faced-hanuman-temple",
+      "ramanathaswamy-temple",
+      "kalam-house"
+    ],
+    "verified": true
   },
   {
     "id": "periyapattinam-beach",
@@ -778,7 +987,12 @@
       "/images/places/periyapattinam-beach/2.jpg",
       "/images/places/periyapattinam-beach/3.jpg"
     ],
-    "tags": ["beach", "port history", "gulf of mannar", "peaceful"],
+    "tags": [
+      "beach",
+      "port history",
+      "gulf of mannar",
+      "peaceful"
+    ],
     "estimated_visit_hours": 1.5,
     "dress_code": "Modest casual coastal wear",
     "photography_rules": "Permitted freely along the seashore and fishing harbor",
@@ -788,7 +1002,11 @@
       "Witness local fishermen landing traditional wooden catamarans in the early mornings.",
       "Respect local village customs and traditions when exploring the coastal hamlet."
     ],
-    "nearby_places": ["thiruppullani-temple", "erwadi-dargah", "ramalinga-vilasam-palace"],
-    "verified": false
+    "nearby_places": [
+      "thiruppullani-temple",
+      "erwadi-dargah",
+      "ramalinga-vilasam-palace"
+    ],
+    "verified": true
   }
 ]

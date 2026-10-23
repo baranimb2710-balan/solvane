@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { getPlaces, clearSession, getUser, getImageUrl } from '../services/api';
 import { useTrip } from '../context/TripContext';
 import TopBar from '../components/TopBar';
 import FloatingChatButton from '../components/FloatingChatButton';
+import Mascot from '../components/Mascot';
 
 /**
  * Solvane - Famous Destinations Page ("/destinations")
@@ -23,15 +25,17 @@ import FloatingChatButton from '../components/FloatingChatButton';
 
 // Master list of destination categories
 const CATEGORIES = [
-  { id: 'all', label: 'All' },
-  { id: 'temple', label: 'Temples', icon: '🛕' },
-  { id: 'beach', label: 'Beaches', icon: '🏖️' },
-  { id: 'heritage', label: 'Heritage', icon: '🏛️' },
-  { id: 'nature', label: 'Nature', icon: '🌴' },
-  { id: 'church_dargah', label: 'Churches and Dargahs', icon: '🕌' }
+  { id: 'all', labelKey: 'destinations.allFilter', defaultLabel: 'All' },
+  { id: 'temple', labelKey: 'destinations.templesFilter', defaultLabel: 'Temples', icon: '🛕' },
+  { id: 'beach', labelKey: 'destinations.beachesFilter', defaultLabel: 'Beaches', icon: '🏖️' },
+  { id: 'heritage', labelKey: 'destinations.heritageFilter', defaultLabel: 'Heritage', icon: '🏛️' },
+  { id: 'nature', labelKey: 'destinations.natureFilter', defaultLabel: 'Nature', icon: '🌴' },
+  { id: 'church_dargah', labelKey: 'destinations.churchDargahFilter', defaultLabel: 'Churches and Dargahs', icon: '🕌' }
 ];
 
 export default function Destinations() {
+  const { t, i18n } = useTranslation();
+  const isTamil = i18n.language === 'ta';
   const navigate = useNavigate();
   const { trip, togglePlace } = useTrip();
 
@@ -136,17 +140,17 @@ export default function Destinations() {
   const getCategoryBadge = (categoryKey) => {
     switch (categoryKey) {
       case 'temple':
-        return { label: 'Temple', class: 'bg-amber-500/20 text-amber-300 border-amber-400/30' };
+        return { label: t('destinations.templesFilter'), class: 'bg-amber-500/20 text-amber-300 border-amber-400/30' };
       case 'beach':
-        return { label: 'Beach', class: 'bg-sky-500/20 text-sky-300 border-sky-400/30' };
+        return { label: t('destinations.beachesFilter'), class: 'bg-sky-500/20 text-sky-300 border-sky-400/30' };
       case 'heritage':
-        return { label: 'Heritage', class: 'bg-orange-500/20 text-orange-300 border-orange-400/30' };
+        return { label: t('destinations.heritageFilter'), class: 'bg-orange-500/20 text-orange-300 border-orange-400/30' };
       case 'nature':
-        return { label: 'Nature', class: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30' };
+        return { label: t('destinations.natureFilter'), class: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30' };
       case 'church_dargah':
-        return { label: 'Church & Dargah', class: 'bg-purple-500/20 text-purple-300 border-purple-400/30' };
+        return { label: t('destinations.churchDargahFilter'), class: 'bg-purple-500/20 text-purple-300 border-purple-400/30' };
       default:
-        return { label: 'Destination', class: 'bg-slate-700/40 text-slate-300 border-white/10' };
+        return { label: t('common.destinations'), class: 'bg-slate-700/40 text-slate-300 border-white/10' };
     }
   };
 
@@ -175,13 +179,13 @@ export default function Destinations() {
         {/* Page Header */}
         <div className="text-center mb-8">
           <span className="inline-block text-xs font-bold uppercase tracking-wider text-orange-400 mb-1">
-            Step 3 of 4 • Select Attractions
+            {t('destinations.step')}
           </span>
           <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white">
-            Famous Destinations in Ramanathapuram
+            {t('destinations.title')}
           </h1>
           <p className="text-xs sm:text-sm text-slate-300 mt-2 max-w-xl mx-auto leading-relaxed">
-            Discover iconic temples, serene beaches, and historic landmarks. Choose your favorite spots to build your custom itinerary.
+            {t('destinations.subtitle')}
           </p>
         </div>
 
@@ -197,7 +201,7 @@ export default function Destinations() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search destinations by name or tags (e.g. Dhanushkodi, Temple, Sunset)..."
+              placeholder={t('destinations.searchPlaceholder')}
               className="w-full pl-11 pr-10 py-3 rounded-2xl text-sm bg-slate-900/90 border border-white/15 text-white placeholder-slate-400 focus:outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-400/20 backdrop-blur-md transition-all shadow-lg"
             />
             {searchQuery && (
@@ -227,7 +231,7 @@ export default function Destinations() {
                   }`}
                 >
                   {cat.icon && <span>{cat.icon}</span>}
-                  <span>{cat.label}</span>
+                  <span>{t(cat.labelKey, cat.defaultLabel)}</span>
                 </button>
               );
             })}
@@ -244,7 +248,7 @@ export default function Destinations() {
               onClick={fetchPlaces}
               className="px-4 py-1.5 rounded-full text-xs font-bold bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all cursor-pointer"
             >
-              Try Again
+              {t('common.retry')}
             </button>
           </div>
         )}
@@ -279,11 +283,13 @@ export default function Destinations() {
         {!loading && !error && (
           <>
             {filteredPlaces.length === 0 ? (
-              <div className="text-center py-16 bg-slate-900/50 rounded-3xl border border-white/10 max-w-lg mx-auto">
-                <span className="text-4xl block mb-2">🏖️</span>
-                <h3 className="text-base font-bold text-white">No destinations found</h3>
+              <div className="text-center py-12 px-4 bg-slate-900/50 rounded-3xl border border-white/10 max-w-lg mx-auto space-y-3">
+                <div className="flex justify-center mb-1">
+                  <Mascot pose="pointing" size={68} animate={true} />
+                </div>
+                <h3 className="text-base font-bold text-white">{t('destinations.noDestinations')}</h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  Try adjusting your search keyword or selecting a different category filter.
+                  {isTamil ? 'உங்கள் தேடல் சொல்லை மாற்றவும் அல்லது வேறு வகையைத் தேர்ந்தெடுக்கவும்.' : 'Try adjusting your search keyword or selecting a different category filter.'}
                 </p>
                 <button
                   onClick={() => {
@@ -292,7 +298,7 @@ export default function Destinations() {
                   }}
                   className="mt-4 px-4 py-1.5 rounded-full text-xs font-bold bg-orange-500/20 text-orange-300 border border-orange-400/30 hover:bg-orange-500/30 cursor-pointer"
                 >
-                  Reset Filters
+                  {t('destinations.clearAll')}
                 </button>
               </div>
             ) : (
@@ -322,6 +328,8 @@ export default function Destinations() {
                   const isAdded = selectedPlaces.includes(place.id);
                   const isMissingImage = !place.image || failedImages[place.id];
                   const badge = getCategoryBadge(place.category);
+                  const primaryName = (isTamil && place.name_ta) ? place.name_ta : place.name_en;
+                  const secondaryName = (isTamil && place.name_ta) ? place.name_en : place.name_ta;
 
                   return (
                     <div
@@ -332,12 +340,12 @@ export default function Destinations() {
                       <div
                         onClick={() => navigate(`/place/${place.id}`)}
                         className="relative h-48 w-full overflow-hidden bg-slate-950 cursor-pointer"
-                        title={`View details for ${place.name_en}`}
+                        title={`${t('common.viewDetails')}: ${primaryName}`}
                       >
                         {!isMissingImage ? (
                           <img
                             src={getImageUrl(place.image)}
-                            alt={place.name_en}
+                            alt={primaryName}
                             onError={() => handleImageError(place.id)}
                             className="w-full h-full object-cover object-center transform group-hover:scale-105 transition-transform duration-500"
                           />
@@ -346,10 +354,10 @@ export default function Destinations() {
                           <div className="w-full h-full bg-gradient-to-br from-sky-900 via-cyan-800 to-blue-950 flex flex-col items-center justify-center p-4 text-center">
                             <span className="text-3xl mb-1">🌊</span>
                             <span className="text-xs font-bold text-sky-100">
-                              {place.name_en}
+                              {primaryName}
                             </span>
                             <span className="text-[10px] text-sky-200/70 mt-0.5">
-                              Ramanathapuram District
+                              {t('common.district')}
                             </span>
                           </div>
                         )}
@@ -370,7 +378,7 @@ export default function Destinations() {
                         {place.estimated_visit_hours && (
                           <div className="absolute top-3 right-3 bg-slate-950/70 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/15 text-[11px] text-slate-200 font-semibold flex items-center gap-1">
                             <span>⏱️</span>
-                            <span>{place.estimated_visit_hours} hrs</span>
+                            <span>{place.estimated_visit_hours} {t('common.hours')}</span>
                           </div>
                         )}
 
@@ -401,18 +409,18 @@ export default function Destinations() {
                       {/* Card Body */}
                       <div className="p-5 flex-1 flex flex-col justify-between">
                         <div>
-                          {/* English and Tamil Names - Clickable */}
+                          {/* Primary and Secondary Names - Clickable */}
                           <div
                             onClick={() => navigate(`/place/${place.id}`)}
                             className="mb-2 cursor-pointer"
-                            title={`View details for ${place.name_en}`}
+                            title={`${t('common.viewDetails')}: ${primaryName}`}
                           >
                             <h3 className="text-lg font-bold text-white tracking-tight leading-snug group-hover:text-sky-300 transition-colors">
-                              {place.name_en}
+                              {primaryName}
                             </h3>
-                            {place.name_ta && (
+                            {secondaryName && (
                               <p className="text-xs text-orange-300/90 font-medium mt-0.5">
-                                {place.name_ta}
+                                {secondaryName}
                               </p>
                             )}
                           </div>
@@ -427,11 +435,11 @@ export default function Destinations() {
                             <div className="flex flex-wrap gap-1.5 mb-4">
                               {place.tags.map((tag) => (
                                 <span
-                                  key={tag}
-                                  className="text-[10px] font-semibold text-slate-400 bg-white/5 border border-white/10 px-2 py-0.5 rounded-md"
-                                >
-                                  #{tag}
-                                </span>
+                                   key={tag}
+                                   className="text-[10px] font-semibold text-slate-400 bg-white/5 border border-white/10 px-2 py-0.5 rounded-md"
+                                 >
+                                   #{tag}
+                                 </span>
                               ))}
                             </div>
                           )}
@@ -452,9 +460,9 @@ export default function Destinations() {
                             }`}
                           >
                             {isAdded ? (
-                              <span>Added ✓</span>
+                              <span>{t('common.addedToTrip')}</span>
                             ) : (
-                              <span>Add to Trip</span>
+                              <span>{t('common.addToTrip')}</span>
                             )}
                           </button>
                         </div>
@@ -481,10 +489,10 @@ export default function Destinations() {
             </div>
             <div>
               <p className="text-xs sm:text-sm font-bold text-white">
-                {selectedCount} {selectedCount === 1 ? 'place' : 'places'} selected
+                {selectedCount} {t('destinations.selectedCount')}
               </p>
               <p className="text-[11px] text-slate-400 hidden sm:block">
-                Saved in your trip planner
+                {isTamil ? 'உங்கள் பயணத் திட்டத்தில் சேர்க்கப்பட்டுள்ளது' : 'Saved in your trip planner'}
               </p>
             </div>
           </div>
@@ -499,7 +507,7 @@ export default function Destinations() {
                 : 'bg-slate-800 text-slate-500 border border-white/5 cursor-not-allowed opacity-60'
             }`}
           >
-            <span>Continue</span>
+            <span>{isTamil ? 'தொடர்க' : 'Continue'}</span>
             <span>→</span>
           </button>
         </div>

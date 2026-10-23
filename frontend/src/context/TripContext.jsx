@@ -10,11 +10,30 @@ const STORAGE_KEY = 'Solvane_trip';
 
 const defaultTripState = {
   budget: 5000,
+  budgetBasis: 'group',
   days: null,
   travellingWith: null,
+  travellers: { adults: 2, children: 0, seniors: 0 },
   interests: [],
   selectedPlaces: []
 };
+
+function normalizeTravellers(travellers, travellingWith) {
+  if (travellingWith === 'solo') {
+    return { adults: 1, children: 0, seniors: 0 };
+  }
+  if (typeof travellers === 'number') {
+    return { adults: Math.max(1, travellers), children: 0, seniors: 0 };
+  }
+  if (travellers && typeof travellers === 'object') {
+    return {
+      adults: Math.max(1, Number(travellers.adults) || 2),
+      children: Math.max(0, Number(travellers.children) || 0),
+      seniors: Math.max(0, Number(travellers.seniors) || 0)
+    };
+  }
+  return { adults: 2, children: 0, seniors: 0 };
+}
 
 const TripContext = createContext(null);
 
@@ -28,6 +47,8 @@ export function TripProvider({ children }) {
           ...defaultTripState,
           ...parsed,
           budget: parsed.budget || defaultTripState.budget,
+          budgetBasis: parsed.budgetBasis || 'group',
+          travellers: normalizeTravellers(parsed.travellers, parsed.travellingWith),
           selectedPlaces: Array.isArray(parsed.selectedPlaces) ? parsed.selectedPlaces : []
         };
       }
