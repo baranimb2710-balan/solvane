@@ -20,6 +20,10 @@ import NotFound from './pages/NotFound';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminPlacesList from './pages/admin/AdminPlacesList';
 import PlaceForm from './pages/admin/PlaceForm';
+import AdminHotelsList from './pages/admin/AdminHotelsList';
+import HotelForm from './pages/admin/HotelForm';
+import AdminFoodList from './pages/admin/AdminFoodList';
+import FoodForm from './pages/admin/FoodForm';
 import { ProtectedRoute, PublicOnlyRoute } from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 import { TripProvider } from './context/TripContext';
@@ -205,6 +209,54 @@ export default function App() {
             element={
               <AdminRoute>
                 <PlaceForm />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/hotels"
+            element={
+              <AdminRoute>
+                <AdminHotelsList />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/hotels/new"
+            element={
+              <AdminRoute>
+                <HotelForm />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/hotels/:id/edit"
+            element={
+              <AdminRoute>
+                <HotelForm />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/food"
+            element={
+              <AdminRoute>
+                <AdminFoodList />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/food/new"
+            element={
+              <AdminRoute>
+                <FoodForm />
+              </AdminRoute>
+            }
+          />
+          <Route
+            path="/admin/food/:id/edit"
+            element={
+              <AdminRoute>
+                <FoodForm />
               </AdminRoute>
             }
           />

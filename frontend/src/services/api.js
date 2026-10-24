@@ -448,6 +448,154 @@ export async function deletePlace(id) {
   }
 }
 
+// -------------------------------------------------------------
+// ADMIN HOTELS MANAGEMENT API HELPERS
+// -------------------------------------------------------------
+export async function createHotel(formData) {
+  try {
+    const response = await authFetch('/api/hotels', {
+      method: 'POST',
+      body: formData,
+    });
+    const data = await response.json().catch(() => null);
+    if (response.ok) {
+      return { success: true, data };
+    }
+    return {
+      success: false,
+      error: data?.detail || 'Failed to create hotel. Please check all fields.',
+      status: response.status,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: 'Cannot reach server, please try again',
+      networkError: true,
+    };
+  }
+}
+
+export async function updateHotel(id, formData) {
+  try {
+    const response = await authFetch(`/api/hotels/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: formData,
+    });
+    const data = await response.json().catch(() => null);
+    if (response.ok) {
+      return { success: true, data };
+    }
+    return {
+      success: false,
+      error: data?.detail || 'Failed to update hotel.',
+      status: response.status,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: 'Cannot reach server, please try again',
+      networkError: true,
+    };
+  }
+}
+
+export async function deleteHotel(id) {
+  try {
+    const response = await authFetch(`/api/hotels/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    const data = await response.json().catch(() => null);
+    if (response.ok) {
+      return { success: true, data };
+    }
+    return {
+      success: false,
+      error: data?.detail || 'Failed to delete hotel.',
+      status: response.status,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: 'Cannot reach server, please try again',
+      networkError: true,
+    };
+  }
+}
+
+// -------------------------------------------------------------
+// ADMIN FOOD MANAGEMENT API HELPERS
+// -------------------------------------------------------------
+export async function createFood(formData) {
+  try {
+    const response = await authFetch('/api/food', {
+      method: 'POST',
+      body: formData,
+    });
+    const data = await response.json().catch(() => null);
+    if (response.ok) {
+      return { success: true, data };
+    }
+    return {
+      success: false,
+      error: data?.detail || 'Failed to create food spot. Please check all fields.',
+      status: response.status,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: 'Cannot reach server, please try again',
+      networkError: true,
+    };
+  }
+}
+
+export async function updateFood(id, formData) {
+  try {
+    const response = await authFetch(`/api/food/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: formData,
+    });
+    const data = await response.json().catch(() => null);
+    if (response.ok) {
+      return { success: true, data };
+    }
+    return {
+      success: false,
+      error: data?.detail || 'Failed to update food spot.',
+      status: response.status,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: 'Cannot reach server, please try again',
+      networkError: true,
+    };
+  }
+}
+
+export async function deleteFood(id) {
+  try {
+    const response = await authFetch(`/api/food/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+    const data = await response.json().catch(() => null);
+    if (response.ok) {
+      return { success: true, data };
+    }
+    return {
+      success: false,
+      error: data?.detail || 'Failed to delete food spot.',
+      status: response.status,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: 'Cannot reach server, please try again',
+      networkError: true,
+    };
+  }
+}
+
 /**
  * Sends a user query along with conversation history and active trip plan to the Solvane AI Guide.
  */

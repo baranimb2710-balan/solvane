@@ -197,13 +197,29 @@ export default function AdminDashboard() {
             </p>
           </div>
 
-          <Link
-            to="/admin/places"
-            className="self-start sm:self-auto px-4 py-2 rounded-xl text-xs font-bold text-white bg-white/10 hover:bg-white/20 border border-white/15 transition-all flex items-center gap-1.5"
-          >
-            <span>🏛️</span>
-            <span>Places Management</span>
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              to="/admin/places"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-white/10 hover:bg-white/20 border border-white/15 transition-all flex items-center gap-1.5"
+            >
+              <span>🏛️</span>
+              <span>Places</span>
+            </Link>
+            <Link
+              to="/admin/hotels"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-white/10 hover:bg-white/20 border border-white/15 transition-all flex items-center gap-1.5"
+            >
+              <span>🏨</span>
+              <span>Hotels</span>
+            </Link>
+            <Link
+              to="/admin/food"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-white/10 hover:bg-white/20 border border-white/15 transition-all flex items-center gap-1.5"
+            >
+              <span>🍽️</span>
+              <span>Food</span>
+            </Link>
+          </div>
         </div>
 
         {/* Tab Navigation */}
@@ -213,7 +229,9 @@ export default function AdminDashboard() {
             { id: 'users', label: 'Users', icon: '👥' },
             { id: 'logins', label: 'Login Logs', icon: '🔐' },
             { id: 'chat', label: 'Chat Questions', icon: '💬' },
-            { id: 'places', label: 'Places Manager', icon: '🗺️' },
+            { id: 'places', label: 'Places Manager', icon: '🏛️' },
+            { id: 'hotels', label: 'Hotels Manager', icon: '🏨' },
+            { id: 'food', label: 'Food Manager', icon: '🍽️' },
           ].map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -748,7 +766,7 @@ export default function AdminDashboard() {
             <div className="text-4xl">🏛️</div>
             <h3 className="text-lg font-bold text-white">Destinations & Places Manager</h3>
             <p className="text-xs text-slate-300 leading-relaxed">
-              Create, edit, verify, and delete Ramanathapuram tourist attractions in the SQLite database with full image compression and thumbnail support.
+              Create, edit, verify, and delete Ramanathapuram tourist attractions in the database with full image compression and thumbnail support.
             </p>
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
               <Link
@@ -762,6 +780,60 @@ export default function AdminDashboard() {
                 className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-white/10 hover:bg-white/20 border border-white/15 transition-all text-center"
               >
                 + Add New Place
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 6: HOTELS MANAGEMENT REDIRECT / SHORTCUT */}
+        {/* ========================================================================= */}
+        {activeTab === 'hotels' && (
+          <div className="bg-slate-900/80 border border-white/10 rounded-3xl p-8 text-center space-y-4 max-w-lg mx-auto my-8 animate-fade-in">
+            <div className="text-4xl">🏨</div>
+            <h3 className="text-lg font-bold text-white">Hotels & Stays Manager</h3>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Manage pilgrim lodges, TTDC hotels, beachfront resorts, price tariffs, and upload accommodation photos directly to the database.
+            </p>
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <Link
+                to="/admin/hotels"
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-300 hover:to-orange-300 shadow-md transition-all text-center"
+              >
+                Open Hotels Directory
+              </Link>
+              <Link
+                to="/admin/hotels/new"
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-white/10 hover:bg-white/20 border border-white/15 transition-all text-center"
+              >
+                + Add New Hotel
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 7: FOOD MANAGEMENT REDIRECT / SHORTCUT */}
+        {/* ========================================================================= */}
+        {activeTab === 'food' && (
+          <div className="bg-slate-900/80 border border-white/10 rounded-3xl p-8 text-center space-y-4 max-w-lg mx-auto my-8 animate-fade-in">
+            <div className="text-4xl">🍽️</div>
+            <h3 className="text-lg font-bold text-white">Food & Dining Manager</h3>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Manage seafood restaurants, vegetarian mess halls, sweet stalls, culinary specialties, timings, and dietary classifications.
+            </p>
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+              <Link
+                to="/admin/food"
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold text-slate-950 bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-300 hover:to-orange-300 shadow-md transition-all text-center"
+              >
+                Open Food Directory
+              </Link>
+              <Link
+                to="/admin/food/new"
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-white/10 hover:bg-white/20 border border-white/15 transition-all text-center"
+              >
+                + Add New Food Spot
               </Link>
             </div>
           </div>

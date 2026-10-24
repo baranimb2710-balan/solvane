@@ -8,7 +8,7 @@ import os
 import re
 import json
 from pathlib import Path
-from database import get_all_places_db
+from database import get_all_places_db, get_all_hotels_db, get_all_food_db
 
 BASE_DIR = Path(__file__).resolve().parent
 HOTELS_FILE = BASE_DIR / "data" / "hotels.json"
@@ -54,10 +54,14 @@ def retrieve_relevant_entries(query: str, selected_place_ids: list = None, max_r
     # Normalize selected IDs
     selected_ids_set = {str(pid).strip().lower() for pid in selected_place_ids if pid}
     
-    # Freshly load places from DB to capture newly added admin destinations
+    # Freshly load places, hotels, and food from database to capture latest data
     db_places = get_all_places_db()
-    hotels = load_json_file(HOTELS_FILE)
-    food_list = load_json_file(FOOD_FILE)
+    hotels = get_all_hotels_db()
+    if not hotels:
+        hotels = load_json_file(HOTELS_FILE)
+    food_list = get_all_food_db()
+    if not food_list:
+        food_list = load_json_file(FOOD_FILE)
     
     query_tokens = extract_tokens(query)
     query_lower = query.lower().strip()

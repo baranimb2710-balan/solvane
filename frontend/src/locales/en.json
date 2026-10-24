@@ -13,6 +13,8 @@
     "map": "Map",
     "askSolvane": "Ask Solvane",
     "admin": "Admin",
+    "hotels": "Hotels & Stays",
+    "food": "Food & Dining",
     "back": "Back",
     "cancel": "Cancel",
     "delete": "Delete",
@@ -373,5 +375,20 @@
     "title": "Page Not Found",
     "subtitle": "Looks like you have wandered off the map! The page you are looking for does not exist.",
     "goHome": "Go Home"
+  },
+  "admin": {
+    "portal": "Admin Portal",
+    "managePlaces": "Manage Destinations",
+    "manageHotels": "Manage Hotels & Stays",
+    "manageFood": "Manage Food & Dining",
+    "addPlace": "Add New Destination",
+    "addHotel": "Add New Hotel",
+    "addFood": "Add New Food Spot",
+    "editPlace": "Edit Destination",
+    "editHotel": "Edit Hotel",
+    "editFood": "Edit Food Spot",
+    "missingImage": "Missing Image",
+    "allStays": "All Stays",
+    "allFood": "All Eateries"
   }
 }

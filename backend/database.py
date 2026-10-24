@@ -31,7 +31,8 @@ from sqlalchemy import (
     desc,
     asc,
     or_,
-    and_
+    and_,
+    text
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session
 from config import DATABASE_URL, DATABASE_PATH, ADMIN_EMAILS
@@ -174,6 +175,8 @@ class Hotel(Base):
 
     id = Column(String(100), primary_key=True)
     name = Column(String(200), nullable=False)
+    name_ta = Column(String(200), nullable=True)
+    destination_id = Column(String(50), default="ramanathapuram", nullable=True)
     area = Column(String(200), nullable=True)
     category = Column(String(50), nullable=True, index=True)
     price_range_per_night = Column(String(100), nullable=True)
@@ -186,6 +189,7 @@ class Hotel(Base):
     image = Column(String(255), nullable=True)
     map_link = Column(String(255), nullable=True)
     verified = Column(Boolean, default=True)
+    created_at = Column(DateTime, server_default=func.now())
 
 
 class Food(Base):
@@ -194,6 +198,8 @@ class Food(Base):
 
     id = Column(String(100), primary_key=True)
     name = Column(String(200), nullable=False)
+    name_ta = Column(String(200), nullable=True)
+    destination_id = Column(String(50), default="ramanathapuram", nullable=True)
     area = Column(String(200), nullable=True)
     type = Column(String(50), nullable=True, index=True)
     famous_for = Column(JSON, nullable=True)
@@ -208,6 +214,7 @@ class Food(Base):
     image = Column(String(255), nullable=True)
     map_link = Column(String(255), nullable=True)
     verified = Column(Boolean, default=True)
+    created_at = Column(DateTime, server_default=func.now())
 
 
 # -------------------------------------------------------------
@@ -271,6 +278,58 @@ def format_place_model(p: Place) -> Optional[dict]:
     }
 
 
+def format_hotel_model(h: Hotel) -> Optional[dict]:
+    """Transforms a Hotel ORM model into a cleanly typed dictionary."""
+    if not h:
+        return None
+    return {
+        "id": h.id,
+        "name": h.name,
+        "name_ta": h.name_ta or "",
+        "destination_id": h.destination_id or "ramanathapuram",
+        "area": h.area or "",
+        "category": h.category or "",
+        "price_range_per_night": h.price_range_per_night or "",
+        "rating": float(h.rating) if h.rating is not None else 4.0,
+        "amenities": ensure_json_list(h.amenities),
+        "contact": h.contact or "",
+        "lat": float(h.lat) if h.lat is not None else 0.0,
+        "lng": float(h.lng) if h.lng is not None else 0.0,
+        "nearby_place_ids": ensure_json_list(h.nearby_place_ids),
+        "image": h.image or "",
+        "map_link": h.map_link or "",
+        "verified": bool(h.verified),
+        "created_at": format_iso_datetime(h.created_at) if hasattr(h, "created_at") else None
+    }
+
+
+def format_food_model(f: Food) -> Optional[dict]:
+    """Transforms a Food ORM model into a cleanly typed dictionary."""
+    if not f:
+        return None
+    return {
+        "id": f.id,
+        "name": f.name,
+        "name_ta": f.name_ta or "",
+        "destination_id": f.destination_id or "ramanathapuram",
+        "area": f.area or "",
+        "type": f.type or "",
+        "famous_for": ensure_json_list(f.famous_for),
+        "price_range": f.price_range or "",
+        "timings": f.timings or "",
+        "veg_or_nonveg": f.veg_or_nonveg or "both",
+        "rating": float(f.rating) if f.rating is not None else 4.0,
+        "contact": f.contact or "",
+        "lat": float(f.lat) if f.lat is not None else 0.0,
+        "lng": float(f.lng) if f.lng is not None else 0.0,
+        "nearby_place_ids": ensure_json_list(f.nearby_place_ids),
+        "image": f.image or "",
+        "map_link": f.map_link or "",
+        "verified": bool(f.verified),
+        "created_at": format_iso_datetime(f.created_at) if hasattr(f, "created_at") else None
+    }
+
+
 def format_user_model(u: User) -> Optional[dict]:
     """Transforms a User ORM model into a user dict."""
     if not u:
@@ -290,6 +349,47 @@ def format_user_model(u: User) -> Optional[dict]:
 # STARTUP & SEEDING HELPERS
 # -------------------------------------------------------------
 
+def ensure_table_columns():
+    """
+    Ensures newly added columns exist in both PostgreSQL and SQLite.
+    Safe, automatic, and idempotent.
+    """
+    try:
+        with engine.connect() as conn:
+            dialect = engine.dialect.name
+            if dialect == "postgresql":
+                queries = [
+                    "ALTER TABLE hotels ADD COLUMN IF NOT EXISTS name_ta VARCHAR(200);",
+                    "ALTER TABLE hotels ADD COLUMN IF NOT EXISTS destination_id VARCHAR(50) DEFAULT 'ramanathapuram';",
+                    "ALTER TABLE hotels ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;",
+                    "ALTER TABLE food ADD COLUMN IF NOT EXISTS name_ta VARCHAR(200);",
+                    "ALTER TABLE food ADD COLUMN IF NOT EXISTS destination_id VARCHAR(50) DEFAULT 'ramanathapuram';",
+                    "ALTER TABLE food ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;",
+                ]
+                for q in queries:
+                    try:
+                        conn.execute(text(q))
+                        conn.commit()
+                    except Exception as e:
+                        print(f"Column check notice: {e}")
+            elif dialect == "sqlite":
+                for table, cols in [
+                    ("hotels", [("name_ta", "TEXT"), ("destination_id", "TEXT DEFAULT 'ramanathapuram'"), ("created_at", "DATETIME DEFAULT CURRENT_TIMESTAMP")]),
+                    ("food", [("name_ta", "TEXT"), ("destination_id", "TEXT DEFAULT 'ramanathapuram'"), ("created_at", "DATETIME DEFAULT CURRENT_TIMESTAMP")])
+                ]:
+                    try:
+                        res = conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
+                        existing_cols = {r[1] for r in res}
+                        for col_name, col_type in cols:
+                            if col_name not in existing_cols:
+                                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}"))
+                                conn.commit()
+                    except Exception as e:
+                        print(f"SQLite column check notice: {e}")
+    except Exception as e:
+        print(f"Schema check error: {e}")
+
+
 def init_db():
     """
     Initializes database tables and syncs admin privileges.
@@ -298,6 +398,8 @@ def init_db():
     """
     # Create all defined tables if they do not exist
     Base.metadata.create_all(bind=engine)
+    # Ensure any new columns exist on already created tables
+    ensure_table_columns()
 
     # Sync admin status for existing users matching ADMIN_EMAILS
     with SessionLocal() as session:
@@ -311,9 +413,93 @@ def init_db():
 
     # Seed places table from places.json if empty
     seed_places_from_json()
+    # Seed hotels table from hotels.json if empty
+    seed_hotels_from_json()
+    # Seed food table from food.json if empty
+    seed_food_from_json()
 
     dialect_name = engine.dialect.name
     print(f"Database initialized successfully ({dialect_name}): tables are ready.")
+
+
+def seed_hotels_from_json():
+    """
+    If the 'hotels' table is currently empty, seeds it from backend/data/hotels.json.
+    Safe, no duplicates, never overwrites existing rows.
+    """
+    with SessionLocal() as session:
+        count = session.scalar(select(func.count(Hotel.id)))
+        if count == 0:
+            hotels_json_path = Path(__file__).parent / "data" / "hotels.json"
+            if hotels_json_path.exists():
+                with open(hotels_json_path, "r", encoding="utf-8") as f:
+                    raw_hotels = json.load(f)
+
+                for h in raw_hotels:
+                    hotel_obj = Hotel(
+                        id=h.get("id"),
+                        name=h.get("name", ""),
+                        name_ta=h.get("name_ta", ""),
+                        destination_id=h.get("destination_id", "ramanathapuram"),
+                        area=h.get("area", ""),
+                        category=h.get("category", ""),
+                        price_range_per_night=h.get("price_range_per_night", ""),
+                        rating=float(h.get("rating", 4.0)),
+                        amenities=h.get("amenities", []),
+                        contact=h.get("contact", ""),
+                        lat=float(h.get("lat", 0.0)),
+                        lng=float(h.get("lng", 0.0)),
+                        nearby_place_ids=h.get("nearby_place_ids", []),
+                        image=h.get("image", ""),
+                        map_link=h.get("map_link", ""),
+                        verified=bool(h.get("verified", True))
+                    )
+                    session.add(hotel_obj)
+                session.commit()
+                print(f"Seeded {len(raw_hotels)} hotels from hotels.json into database.")
+            else:
+                print("hotels.json not found for initial seeding.")
+
+
+def seed_food_from_json():
+    """
+    If the 'food' table is currently empty, seeds it from backend/data/food.json.
+    Safe, no duplicates, never overwrites existing rows.
+    """
+    with SessionLocal() as session:
+        count = session.scalar(select(func.count(Food.id)))
+        if count == 0:
+            food_json_path = Path(__file__).parent / "data" / "food.json"
+            if food_json_path.exists():
+                with open(food_json_path, "r", encoding="utf-8") as f:
+                    raw_food = json.load(f)
+
+                for f_item in raw_food:
+                    food_obj = Food(
+                        id=f_item.get("id"),
+                        name=f_item.get("name", ""),
+                        name_ta=f_item.get("name_ta", ""),
+                        destination_id=f_item.get("destination_id", "ramanathapuram"),
+                        area=f_item.get("area", ""),
+                        type=f_item.get("type", ""),
+                        famous_for=f_item.get("famous_for", []),
+                        price_range=f_item.get("price_range", ""),
+                        timings=f_item.get("timings", ""),
+                        veg_or_nonveg=f_item.get("veg_or_nonveg", "both"),
+                        rating=float(f_item.get("rating", 4.0)),
+                        contact=f_item.get("contact", ""),
+                        lat=float(f_item.get("lat", 0.0)),
+                        lng=float(f_item.get("lng", 0.0)),
+                        nearby_place_ids=f_item.get("nearby_place_ids", []),
+                        image=f_item.get("image", ""),
+                        map_link=f_item.get("map_link", ""),
+                        verified=bool(f_item.get("verified", True))
+                    )
+                    session.add(food_obj)
+                session.commit()
+                print(f"Seeded {len(raw_food)} food establishments from food.json into database.")
+            else:
+                print("food.json not found for initial seeding.")
 
 
 def seed_places_from_json():
@@ -485,6 +671,226 @@ def delete_place_db(place_id: str) -> bool:
     """Deletes a place from database by ID. Returns True if deleted, False if not found."""
     with SessionLocal() as session:
         stmt = delete(Place).where(func.lower(Place.id) == place_id.strip().lower())
+        res = session.execute(stmt)
+        session.commit()
+        return res.rowcount > 0
+
+
+# -------------------------------------------------------------
+# HOTELS CRUD (SQLAlchemy 2.0)
+# -------------------------------------------------------------
+
+def get_all_hotels_db(category: Optional[str] = None) -> List[dict]:
+    """Retrieves all hotels with optional category filtering."""
+    with SessionLocal() as session:
+        stmt = select(Hotel)
+        if category and category.strip().lower() != "all":
+            stmt = stmt.where(func.lower(Hotel.category) == category.strip().lower())
+        stmt = stmt.order_by(asc(Hotel.name))
+        results = session.scalars(stmt).all()
+        return [format_hotel_model(h) for h in results]
+
+
+def get_hotel_by_id_db(hotel_id: str) -> Optional[dict]:
+    """Retrieves a single hotel by its unique slug ID."""
+    if not hotel_id:
+        return None
+    with SessionLocal() as session:
+        stmt = select(Hotel).where(func.lower(Hotel.id) == hotel_id.strip().lower())
+        hotel = session.scalars(stmt).first()
+        return format_hotel_model(hotel) if hotel else None
+
+
+def hotel_slug_exists(slug: str) -> bool:
+    """Checks if a hotel with given slug already exists."""
+    if not slug:
+        return False
+    with SessionLocal() as session:
+        stmt = select(Hotel.id).where(func.lower(Hotel.id) == slug.strip().lower())
+        return session.scalars(stmt).first() is not None
+
+
+def create_hotel_db(hotel_data: dict) -> Optional[dict]:
+    """Inserts a newly created hotel into the hotels table."""
+    with SessionLocal() as session:
+        hotel = Hotel(
+            id=hotel_data["id"],
+            name=hotel_data["name"],
+            name_ta=hotel_data.get("name_ta", ""),
+            destination_id=hotel_data.get("destination_id", "ramanathapuram"),
+            area=hotel_data.get("area", ""),
+            category=hotel_data.get("category", "mid_range"),
+            price_range_per_night=hotel_data.get("price_range_per_night", ""),
+            rating=float(hotel_data.get("rating", 4.0)),
+            amenities=ensure_json_list(hotel_data.get("amenities", [])),
+            contact=hotel_data.get("contact", ""),
+            lat=float(hotel_data["lat"]) if hotel_data.get("lat") is not None else 0.0,
+            lng=float(hotel_data["lng"]) if hotel_data.get("lng") is not None else 0.0,
+            nearby_place_ids=ensure_json_list(hotel_data.get("nearby_place_ids", [])),
+            image=hotel_data.get("image", ""),
+            map_link=hotel_data.get("map_link", ""),
+            verified=bool(hotel_data.get("verified", True))
+        )
+        session.add(hotel)
+        session.commit()
+        session.refresh(hotel)
+        return format_hotel_model(hotel)
+
+
+def update_hotel_db(hotel_id: str, hotel_data: dict) -> Optional[dict]:
+    """Updates an existing hotel in database."""
+    with SessionLocal() as session:
+        stmt = select(Hotel).where(func.lower(Hotel.id) == hotel_id.strip().lower())
+        hotel = session.scalars(stmt).first()
+        if not hotel:
+            return None
+
+        hotel.name = hotel_data["name"]
+        if "name_ta" in hotel_data:
+            hotel.name_ta = hotel_data.get("name_ta", "")
+        if "destination_id" in hotel_data:
+            hotel.destination_id = hotel_data.get("destination_id", "ramanathapuram")
+        hotel.area = hotel_data.get("area", "")
+        hotel.category = hotel_data.get("category", "mid_range")
+        hotel.price_range_per_night = hotel_data.get("price_range_per_night", "")
+        if hotel_data.get("rating") is not None:
+            hotel.rating = float(hotel_data["rating"])
+        if "amenities" in hotel_data:
+            hotel.amenities = ensure_json_list(hotel_data["amenities"])
+        hotel.contact = hotel_data.get("contact", "")
+        if hotel_data.get("lat") is not None:
+            hotel.lat = float(hotel_data["lat"])
+        if hotel_data.get("lng") is not None:
+            hotel.lng = float(hotel_data["lng"])
+        if "nearby_place_ids" in hotel_data:
+            hotel.nearby_place_ids = ensure_json_list(hotel_data["nearby_place_ids"])
+        if "image" in hotel_data:
+            hotel.image = hotel_data["image"]
+        hotel.map_link = hotel_data.get("map_link", "")
+        if "verified" in hotel_data:
+            hotel.verified = bool(hotel_data["verified"])
+
+        session.commit()
+        session.refresh(hotel)
+        return format_hotel_model(hotel)
+
+
+def delete_hotel_db(hotel_id: str) -> bool:
+    """Deletes a hotel from database by ID. Returns True if deleted, False if not found."""
+    with SessionLocal() as session:
+        stmt = delete(Hotel).where(func.lower(Hotel.id) == hotel_id.strip().lower())
+        res = session.execute(stmt)
+        session.commit()
+        return res.rowcount > 0
+
+
+# -------------------------------------------------------------
+# FOOD CRUD (SQLAlchemy 2.0)
+# -------------------------------------------------------------
+
+def get_all_food_db(type: Optional[str] = None) -> List[dict]:
+    """Retrieves all food spots with optional type filtering."""
+    with SessionLocal() as session:
+        stmt = select(Food)
+        if type and type.strip().lower() != "all":
+            stmt = stmt.where(func.lower(Food.type) == type.strip().lower())
+        stmt = stmt.order_by(asc(Food.name))
+        results = session.scalars(stmt).all()
+        return [format_food_model(f) for f in results]
+
+
+def get_food_by_id_db(food_id: str) -> Optional[dict]:
+    """Retrieves a single food spot by its unique slug ID."""
+    if not food_id:
+        return None
+    with SessionLocal() as session:
+        stmt = select(Food).where(func.lower(Food.id) == food_id.strip().lower())
+        food = session.scalars(stmt).first()
+        return format_food_model(food) if food else None
+
+
+def food_slug_exists(slug: str) -> bool:
+    """Checks if a food spot with given slug already exists."""
+    if not slug:
+        return False
+    with SessionLocal() as session:
+        stmt = select(Food.id).where(func.lower(Food.id) == slug.strip().lower())
+        return session.scalars(stmt).first() is not None
+
+
+def create_food_db(food_data: dict) -> Optional[dict]:
+    """Inserts a newly created food spot into the food table."""
+    with SessionLocal() as session:
+        food = Food(
+            id=food_data["id"],
+            name=food_data["name"],
+            name_ta=food_data.get("name_ta", ""),
+            destination_id=food_data.get("destination_id", "ramanathapuram"),
+            area=food_data.get("area", ""),
+            type=food_data.get("type", "tiffin"),
+            famous_for=ensure_json_list(food_data.get("famous_for", [])),
+            price_range=food_data.get("price_range", ""),
+            timings=food_data.get("timings", ""),
+            veg_or_nonveg=food_data.get("veg_or_nonveg", "both"),
+            rating=float(food_data.get("rating", 4.0)),
+            contact=food_data.get("contact", ""),
+            lat=float(food_data["lat"]) if food_data.get("lat") is not None else 0.0,
+            lng=float(food_data["lng"]) if food_data.get("lng") is not None else 0.0,
+            nearby_place_ids=ensure_json_list(food_data.get("nearby_place_ids", [])),
+            image=food_data.get("image", ""),
+            map_link=food_data.get("map_link", ""),
+            verified=bool(food_data.get("verified", True))
+        )
+        session.add(food)
+        session.commit()
+        session.refresh(food)
+        return format_food_model(food)
+
+
+def update_food_db(food_id: str, food_data: dict) -> Optional[dict]:
+    """Updates an existing food spot in database."""
+    with SessionLocal() as session:
+        stmt = select(Food).where(func.lower(Food.id) == food_id.strip().lower())
+        food = session.scalars(stmt).first()
+        if not food:
+            return None
+
+        food.name = food_data["name"]
+        if "name_ta" in food_data:
+            food.name_ta = food_data.get("name_ta", "")
+        if "destination_id" in food_data:
+            food.destination_id = food_data.get("destination_id", "ramanathapuram")
+        food.area = food_data.get("area", "")
+        food.type = food_data.get("type", "tiffin")
+        if "famous_for" in food_data:
+            food.famous_for = ensure_json_list(food_data["famous_for"])
+        food.price_range = food_data.get("price_range", "")
+        food.timings = food_data.get("timings", "")
+        food.veg_or_nonveg = food_data.get("veg_or_nonveg", "both")
+        if food_data.get("rating") is not None:
+            food.rating = float(food_data["rating"])
+        food.contact = food_data.get("contact", "")
+        if food_data.get("lat") is not None:
+            food.lat = float(food_data["lat"])
+        if food_data.get("lng") is not None:
+            food.lng = float(food_data["lng"])
+        if "nearby_place_ids" in food_data:
+            food.nearby_place_ids = ensure_json_list(food_data["nearby_place_ids"])
+        if "image" in food_data:
+            food.image = food_data["image"]
+        food.map_link = food_data.get("map_link", "")
+        if "verified" in food_data:
+            food.verified = bool(food_data["verified"])
+
+        session.commit()
+        session.refresh(food)
+        return format_food_model(food)
+
+
+def delete_food_db(food_id: str) -> bool:
+    """Deletes a food spot from database by ID. Returns True if deleted, False if not found."""
+    with SessionLocal() as session:
+        stmt = delete(Food).where(func.lower(Food.id) == food_id.strip().lower())
         res = session.execute(stmt)
         session.commit()
         return res.rowcount > 0
@@ -779,6 +1185,9 @@ def get_admin_dashboard_stats() -> dict:
         ) or 0
         total_saved_plans = session.scalar(select(func.count(SavedPlan.plan_id))) or 0
         total_chat_questions = session.scalar(select(func.count(ChatLog.log_id))) or 0
+        total_places = session.scalar(select(func.count(Place.id))) or 0
+        total_hotels = session.scalar(select(func.count(Hotel.id))) or 0
+        total_food = session.scalar(select(func.count(Food.id))) or 0
 
         return {
             "total_users": total_users,
@@ -786,7 +1195,10 @@ def get_admin_dashboard_stats() -> dict:
             "total_logins": total_logins,
             "failed_logins_24h": failed_logins_24h,
             "total_saved_plans": total_saved_plans,
-            "total_chat_questions": total_chat_questions
+            "total_chat_questions": total_chat_questions,
+            "total_places": total_places,
+            "total_hotels": total_hotels,
+            "total_food": total_food
         }
 
 

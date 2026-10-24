@@ -43,6 +43,18 @@ from database import (
     create_place_db,
     update_place_db,
     delete_place_db,
+    get_all_hotels_db,
+    get_hotel_by_id_db,
+    hotel_slug_exists,
+    create_hotel_db,
+    update_hotel_db,
+    delete_hotel_db,
+    get_all_food_db,
+    get_food_by_id_db,
+    food_slug_exists,
+    create_food_db,
+    update_food_db,
+    delete_food_db,
     log_chat_question,
     get_cached_plan_narration,
     save_plan_narration,
@@ -94,30 +106,24 @@ HOTELS_DATA = []
 FOOD_DATA = []
 
 def load_hotels_data():
-    """Loads hotels and accommodation dataset from backend/data/hotels.json."""
+    """Loads hotels and accommodation dataset from database into memory cache."""
     global HOTELS_DATA
-    data_file = Path(__file__).parent / "data" / "hotels.json"
-    if data_file.exists():
-        with open(data_file, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-            HOTELS_DATA = [h for h in raw if isinstance(h, dict) and h.get("id")]
-        print(f"Loaded {len(HOTELS_DATA)} accommodations from {data_file.name}")
-    else:
+    try:
+        HOTELS_DATA = get_all_hotels_db()
+        print(f"Loaded {len(HOTELS_DATA)} accommodations from database")
+    except Exception as e:
+        print(f"Warning loading hotels from database: {e}")
         HOTELS_DATA = []
-        print(f"Warning: {data_file} not found.")
 
 def load_food_data():
-    """Loads eateries and food spots dataset from backend/data/food.json."""
+    """Loads eateries and food spots dataset from database into memory cache."""
     global FOOD_DATA
-    data_file = Path(__file__).parent / "data" / "food.json"
-    if data_file.exists():
-        with open(data_file, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-            FOOD_DATA = [f_item for f_item in raw if isinstance(f_item, dict) and f_item.get("id")]
-        print(f"Loaded {len(FOOD_DATA)} food establishments from {data_file.name}")
-    else:
+    try:
+        FOOD_DATA = get_all_food_db()
+        print(f"Loaded {len(FOOD_DATA)} food establishments from database")
+    except Exception as e:
+        print(f"Warning loading food from database: {e}")
         FOOD_DATA = []
-        print(f"Warning: {data_file} not found.")
 
 # -------------------------------------------------------------
 # STARTUP EVENT
@@ -219,11 +225,11 @@ def get_current_admin_user(current_user: dict = Depends(get_current_user)):
 MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
-def process_and_save_image(file_bytes: bytes, filename: str, place_id: str) -> str:
+def process_and_save_image(file_bytes: bytes, filename: str, entity_id: str, subfolder: str = "places") -> str:
     """
     Validates, compresses, and resizes an uploaded image to a maximum dimension of 1600px.
-    Saves the processed file in backend/uploads/places/<place_id>/<uuid>.<ext>.
-    Returns the relative web path: /uploads/places/<place_id>/<filename>.
+    Saves the processed file in backend/uploads/<subfolder>/<entity_id>/<uuid>.<ext>.
+    Returns the relative web path: /uploads/<subfolder>/<entity_id>/<filename>.
     """
     if len(file_bytes) > MAX_IMAGE_SIZE_BYTES:
         raise HTTPException(
@@ -264,18 +270,18 @@ def process_and_save_image(file_bytes: bytes, filename: str, place_id: str) -> s
     if save_format == "JPEG" and image.mode in ("RGBA", "P"):
         image = image.convert("RGB")
 
-    place_folder = UPLOADS_DIR / "places" / place_id
-    place_folder.mkdir(parents=True, exist_ok=True)
+    target_folder = UPLOADS_DIR / subfolder / entity_id
+    target_folder.mkdir(parents=True, exist_ok=True)
 
     unique_filename = f"{uuid.uuid4().hex[:12]}{ext}"
-    output_path = place_folder / unique_filename
+    output_path = target_folder / unique_filename
 
     if save_format in ["JPEG", "WEBP"]:
         image.save(output_path, format=save_format, quality=85, optimize=True)
     else:
         image.save(output_path, format=save_format, optimize=True)
 
-    return f"/uploads/places/{place_id}/{unique_filename}"
+    return f"/uploads/{subfolder}/{entity_id}/{unique_filename}"
 
 def generate_unique_place_slug(name_en: str) -> str:
     """Generates a URL-safe, unique slug from the destination English name."""
@@ -285,6 +291,30 @@ def generate_unique_place_slug(name_en: str) -> str:
     slug = base_slug
     counter = 1
     while place_slug_exists(slug):
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+    return slug
+
+def generate_unique_hotel_slug(name: str) -> str:
+    """Generates a URL-safe, unique slug from the hotel English name."""
+    base_slug = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+    if not base_slug:
+        base_slug = "hotel"
+    slug = base_slug
+    counter = 1
+    while hotel_slug_exists(slug):
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+    return slug
+
+def generate_unique_food_slug(name: str) -> str:
+    """Generates a URL-safe, unique slug from the eatery English name."""
+    base_slug = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+    if not base_slug:
+        base_slug = "food"
+    slug = base_slug
+    counter = 1
+    while food_slug_exists(slug):
         slug = f"{base_slug}-{counter}"
         counter += 1
     return slug
@@ -842,11 +872,7 @@ def get_hotels(
     Requires Authorization: Bearer <JWT_TOKEN>.
     Supports optional ?category= filter ('budget', 'mid_range', 'premium', 'lodge_dharamshala').
     """
-    if category and category.strip():
-        cat_lower = category.strip().lower()
-        if cat_lower != "all":
-            return [h for h in HOTELS_DATA if h.get("category", "").lower() == cat_lower]
-    return HOTELS_DATA
+    return get_all_hotels_db(category=category)
 
 @app.get("/api/hotels/{hotel_id}", tags=["Hotels"])
 def get_hotel(
@@ -858,14 +884,154 @@ def get_hotel(
     Requires Authorization: Bearer <JWT_TOKEN>.
     Returns 404 if not found.
     """
-    slug = hotel_id.strip().lower()
-    for hotel in HOTELS_DATA:
-        if hotel.get("id", "").lower() == slug:
-            return hotel
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Hotel with ID '{hotel_id}' not found."
-    )
+    hotel = get_hotel_by_id_db(hotel_id)
+    if not hotel:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Hotel with ID '{hotel_id}' not found."
+        )
+    return hotel
+
+@app.post("/api/hotels", status_code=status.HTTP_201_CREATED, tags=["Hotels Admin"])
+async def create_hotel(
+    name: str = Form(..., description="Hotel name"),
+    name_ta: Optional[str] = Form("", description="Tamil name of hotel"),
+    category: Optional[str] = Form("mid_range", description="budget, mid_range, premium, lodge_dharamshala"),
+    area: Optional[str] = Form("", description="Location area"),
+    price_range_per_night: Optional[str] = Form("", description="e.g. ₹1,500 to ₹3,000"),
+    rating: Optional[float] = Form(4.0, description="Rating from 1.0 to 5.0"),
+    contact: Optional[str] = Form("", description="Phone number"),
+    lat: Optional[float] = Form(9.2885, description="Latitude"),
+    lng: Optional[float] = Form(79.3148, description="Longitude"),
+    amenities: Optional[str] = Form("", description="Amenities as comma-separated or JSON list"),
+    nearby_place_ids: Optional[str] = Form("", description="Nearby place slug IDs as comma-separated or JSON list"),
+    map_link: Optional[str] = Form("", description="Google Maps URL"),
+    verified: Optional[bool] = Form(True, description="Verification status"),
+    image_file: Optional[UploadFile] = File(None, description="Uploaded cover image"),
+    image_url: Optional[str] = Form("", description="Existing image path or web URL"),
+    admin_user: dict = Depends(get_current_admin_user)
+):
+    """Creates a new hotel. Admin privilege required."""
+    clean_name = name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Hotel name is required.")
+
+    slug = generate_unique_hotel_slug(clean_name)
+
+    image_path = (image_url or "").strip()
+    if image_file and image_file.filename:
+        file_bytes = await image_file.read()
+        if file_bytes:
+            image_path = process_and_save_image(file_bytes, image_file.filename, slug, subfolder="hotels")
+
+    payload = {
+        "id": slug,
+        "name": clean_name,
+        "name_ta": (name_ta or "").strip(),
+        "destination_id": "ramanathapuram",
+        "category": (category or "mid_range").strip().lower(),
+        "area": (area or "").strip(),
+        "price_range_per_night": (price_range_per_night or "").strip(),
+        "rating": float(rating) if rating is not None else 4.0,
+        "contact": (contact or "").strip(),
+        "lat": float(lat) if lat is not None else 0.0,
+        "lng": float(lng) if lng is not None else 0.0,
+        "amenities": parse_json_or_delimiters(amenities),
+        "nearby_place_ids": parse_json_or_delimiters(nearby_place_ids),
+        "map_link": (map_link or "").strip(),
+        "image": image_path,
+        "verified": bool(verified)
+    }
+
+    created = create_hotel_db(payload)
+    if not created:
+        raise HTTPException(status_code=500, detail="Failed to save hotel to database.")
+    load_hotels_data()
+    return created
+
+@app.put("/api/hotels/{hotel_id}", tags=["Hotels Admin"])
+async def update_hotel(
+    hotel_id: str,
+    name: str = Form(..., description="Hotel name"),
+    name_ta: Optional[str] = Form("", description="Tamil name of hotel"),
+    category: Optional[str] = Form("mid_range", description="budget, mid_range, premium, lodge_dharamshala"),
+    area: Optional[str] = Form("", description="Location area"),
+    price_range_per_night: Optional[str] = Form("", description="e.g. ₹1,500 to ₹3,000"),
+    rating: Optional[float] = Form(4.0, description="Rating from 1.0 to 5.0"),
+    contact: Optional[str] = Form("", description="Phone number"),
+    lat: Optional[float] = Form(9.2885, description="Latitude"),
+    lng: Optional[float] = Form(79.3148, description="Longitude"),
+    amenities: Optional[str] = Form("", description="Amenities as comma-separated or JSON list"),
+    nearby_place_ids: Optional[str] = Form("", description="Nearby place slug IDs as comma-separated or JSON list"),
+    map_link: Optional[str] = Form("", description="Google Maps URL"),
+    verified: Optional[bool] = Form(True, description="Verification status"),
+    image_file: Optional[UploadFile] = File(None, description="Uploaded cover image"),
+    image_url: Optional[str] = Form("", description="Existing image path or web URL"),
+    admin_user: dict = Depends(get_current_admin_user)
+):
+    """Updates an existing hotel. Admin privilege required."""
+    existing = get_hotel_by_id_db(hotel_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"Hotel '{hotel_id}' not found.")
+
+    clean_name = name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Hotel name is required.")
+
+    image_path = (image_url or existing.get("image", "")).strip()
+    if image_file and image_file.filename:
+        file_bytes = await image_file.read()
+        if file_bytes:
+            image_path = process_and_save_image(file_bytes, image_file.filename, hotel_id, subfolder="hotels")
+
+    payload = {
+        "name": clean_name,
+        "name_ta": (name_ta or "").strip(),
+        "destination_id": "ramanathapuram",
+        "category": (category or "mid_range").strip().lower(),
+        "area": (area or "").strip(),
+        "price_range_per_night": (price_range_per_night or "").strip(),
+        "rating": float(rating) if rating is not None else 4.0,
+        "contact": (contact or "").strip(),
+        "lat": float(lat) if lat is not None else 0.0,
+        "lng": float(lng) if lng is not None else 0.0,
+        "amenities": parse_json_or_delimiters(amenities),
+        "nearby_place_ids": parse_json_or_delimiters(nearby_place_ids),
+        "map_link": (map_link or "").strip(),
+        "image": image_path,
+        "verified": bool(verified)
+    }
+
+    updated = update_hotel_db(hotel_id, payload)
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to update hotel in database.")
+    load_hotels_data()
+    return updated
+
+@app.delete("/api/hotels/{hotel_id}", tags=["Hotels Admin"])
+def delete_hotel(
+    hotel_id: str,
+    admin_user: dict = Depends(get_current_admin_user)
+):
+    """Permanently deletes a hotel and cleans up uploaded files. Admin privilege required."""
+    existing = get_hotel_by_id_db(hotel_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"Hotel '{hotel_id}' not found.")
+
+    deleted = delete_hotel_db(hotel_id)
+    if not deleted:
+        raise HTTPException(status_code=500, detail="Failed to delete hotel from database.")
+
+    folder = UPLOADS_DIR / "hotels" / hotel_id
+    if folder.exists():
+        try:
+            shutil.rmtree(folder, ignore_errors=True)
+        except Exception as e:
+            print(f"Warning deleting hotel upload folder: {e}")
+
+    load_hotels_data()
+    return {"message": f"Hotel '{existing.get('name')}' deleted successfully.", "id": hotel_id}
+
 
 # -------------------------------------------------------------
 # FOOD & EATERIES ENDPOINTS
@@ -880,11 +1046,7 @@ def get_food(
     Requires Authorization: Bearer <JWT_TOKEN>.
     Supports optional ?type= filter ('seafood', 'tiffin', 'meals', 'snacks_sweets', 'cafe').
     """
-    if type and type.strip():
-        type_lower = type.strip().lower()
-        if type_lower != "all":
-            return [f for f in FOOD_DATA if f.get("type", "").lower() == type_lower]
-    return FOOD_DATA
+    return get_all_food_db(type=type)
 
 @app.get("/api/food/{food_id}", tags=["Food"])
 def get_food_item(
@@ -896,14 +1058,161 @@ def get_food_item(
     Requires Authorization: Bearer <JWT_TOKEN>.
     Returns 404 if not found.
     """
-    slug = food_id.strip().lower()
-    for item in FOOD_DATA:
-        if item.get("id", "").lower() == slug:
-            return item
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Food spot with ID '{food_id}' not found."
-    )
+    food = get_food_by_id_db(food_id)
+    if not food:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Food spot with ID '{food_id}' not found."
+        )
+    return food
+
+@app.post("/api/food", status_code=status.HTTP_201_CREATED, tags=["Food Admin"])
+async def create_food_item(
+    name: str = Form(..., description="Food spot name"),
+    name_ta: Optional[str] = Form("", description="Tamil name of eatery"),
+    type: Optional[str] = Form("tiffin", description="seafood, tiffin, meals, snacks_sweets, cafe"),
+    veg_or_nonveg: Optional[str] = Form("both", description="veg, non-veg, both"),
+    area: Optional[str] = Form("", description="Location area"),
+    price_range: Optional[str] = Form("", description="e.g. ₹100 to ₹250 per person"),
+    timings: Optional[str] = Form("", description="Operating hours"),
+    rating: Optional[float] = Form(4.0, description="Rating from 1.0 to 5.0"),
+    contact: Optional[str] = Form("", description="Phone number"),
+    lat: Optional[float] = Form(9.2885, description="Latitude"),
+    lng: Optional[float] = Form(79.3148, description="Longitude"),
+    famous_for: Optional[str] = Form("", description="Famous dishes as comma-separated or JSON list"),
+    nearby_place_ids: Optional[str] = Form("", description="Nearby place slug IDs as comma-separated or JSON list"),
+    map_link: Optional[str] = Form("", description="Google Maps URL"),
+    verified: Optional[bool] = Form(True, description="Verification status"),
+    image_file: Optional[UploadFile] = File(None, description="Uploaded cover image"),
+    image_url: Optional[str] = Form("", description="Existing image path or web URL"),
+    admin_user: dict = Depends(get_current_admin_user)
+):
+    """Creates a new food spot. Admin privilege required."""
+    clean_name = name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Food spot name is required.")
+
+    slug = generate_unique_food_slug(clean_name)
+
+    image_path = (image_url or "").strip()
+    if image_file and image_file.filename:
+        file_bytes = await image_file.read()
+        if file_bytes:
+            image_path = process_and_save_image(file_bytes, image_file.filename, slug, subfolder="food")
+
+    payload = {
+        "id": slug,
+        "name": clean_name,
+        "name_ta": (name_ta or "").strip(),
+        "destination_id": "ramanathapuram",
+        "type": (type or "tiffin").strip().lower(),
+        "veg_or_nonveg": (veg_or_nonveg or "both").strip().lower(),
+        "area": (area or "").strip(),
+        "price_range": (price_range or "").strip(),
+        "timings": (timings or "").strip(),
+        "rating": float(rating) if rating is not None else 4.0,
+        "contact": (contact or "").strip(),
+        "lat": float(lat) if lat is not None else 0.0,
+        "lng": float(lng) if lng is not None else 0.0,
+        "famous_for": parse_json_or_delimiters(famous_for),
+        "nearby_place_ids": parse_json_or_delimiters(nearby_place_ids),
+        "map_link": (map_link or "").strip(),
+        "image": image_path,
+        "verified": bool(verified)
+    }
+
+    created = create_food_db(payload)
+    if not created:
+        raise HTTPException(status_code=500, detail="Failed to save food spot to database.")
+    load_food_data()
+    return created
+
+@app.put("/api/food/{food_id}", tags=["Food Admin"])
+async def update_food_endpoint(
+    food_id: str,
+    name: str = Form(..., description="Food spot name"),
+    name_ta: Optional[str] = Form("", description="Tamil name of eatery"),
+    type: Optional[str] = Form("tiffin", description="seafood, tiffin, meals, snacks_sweets, cafe"),
+    veg_or_nonveg: Optional[str] = Form("both", description="veg, non-veg, both"),
+    area: Optional[str] = Form("", description="Location area"),
+    price_range: Optional[str] = Form("", description="e.g. ₹100 to ₹250 per person"),
+    timings: Optional[str] = Form("", description="Operating hours"),
+    rating: Optional[float] = Form(4.0, description="Rating from 1.0 to 5.0"),
+    contact: Optional[str] = Form("", description="Phone number"),
+    lat: Optional[float] = Form(9.2885, description="Latitude"),
+    lng: Optional[float] = Form(79.3148, description="Longitude"),
+    famous_for: Optional[str] = Form("", description="Famous dishes as comma-separated or JSON list"),
+    nearby_place_ids: Optional[str] = Form("", description="Nearby place slug IDs as comma-separated or JSON list"),
+    map_link: Optional[str] = Form("", description="Google Maps URL"),
+    verified: Optional[bool] = Form(True, description="Verification status"),
+    image_file: Optional[UploadFile] = File(None, description="Uploaded cover image"),
+    image_url: Optional[str] = Form("", description="Existing image path or web URL"),
+    admin_user: dict = Depends(get_current_admin_user)
+):
+    """Updates an existing food spot. Admin privilege required."""
+    existing = get_food_by_id_db(food_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"Food spot '{food_id}' not found.")
+
+    clean_name = name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Food spot name is required.")
+
+    image_path = (image_url or existing.get("image", "")).strip()
+    if image_file and image_file.filename:
+        file_bytes = await image_file.read()
+        if file_bytes:
+            image_path = process_and_save_image(file_bytes, image_file.filename, food_id, subfolder="food")
+
+    payload = {
+        "name": clean_name,
+        "name_ta": (name_ta or "").strip(),
+        "destination_id": "ramanathapuram",
+        "type": (type or "tiffin").strip().lower(),
+        "veg_or_nonveg": (veg_or_nonveg or "both").strip().lower(),
+        "area": (area or "").strip(),
+        "price_range": (price_range or "").strip(),
+        "timings": (timings or "").strip(),
+        "rating": float(rating) if rating is not None else 4.0,
+        "contact": (contact or "").strip(),
+        "lat": float(lat) if lat is not None else 0.0,
+        "lng": float(lng) if lng is not None else 0.0,
+        "famous_for": parse_json_or_delimiters(famous_for),
+        "nearby_place_ids": parse_json_or_delimiters(nearby_place_ids),
+        "map_link": (map_link or "").strip(),
+        "image": image_path,
+        "verified": bool(verified)
+    }
+
+    updated = update_food_db(food_id, payload)
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to update food spot in database.")
+    load_food_data()
+    return updated
+
+@app.delete("/api/food/{food_id}", tags=["Food Admin"])
+def delete_food_endpoint(
+    food_id: str,
+    admin_user: dict = Depends(get_current_admin_user)
+):
+    """Permanently deletes a food spot and cleans up uploaded files. Admin privilege required."""
+    existing = get_food_by_id_db(food_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"Food spot '{food_id}' not found.")
+
+    deleted = delete_food_db(food_id)
+    if not deleted:
+        raise HTTPException(status_code=500, detail="Failed to delete food spot from database.")
+
+    folder = UPLOADS_DIR / "food" / food_id
+    if folder.exists():
+        try:
+            shutil.rmtree(folder, ignore_errors=True)
+        except Exception as e:
+            print(f"Warning deleting food upload folder: {e}")
+
+    load_food_data()
+    return {"message": f"Food spot '{existing.get('name')}' deleted successfully.", "id": food_id}
 
 # -------------------------------------------------------------
 # PLANNER REQUEST MODEL & ENDPOINT (POWERED BY SQLITE PLACES)
