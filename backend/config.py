@@ -11,6 +11,20 @@ load_dotenv()  # Fallback to CWD if present
 _db_env = os.getenv("DATABASE_PATH", "solvane.db")
 DATABASE_PATH = str(Path(_db_env) if os.path.isabs(_db_env) else (_backend_dir / _db_env).resolve())
 
+# Database URL for SQLAlchemy (supports SQLite locally and PostgreSQL / Supabase in production)
+_raw_db_url = os.getenv("DATABASE_URL", "").strip()
+if _raw_db_url:
+    # Normalize legacy postgres:// to postgresql+psycopg2:// for SQLAlchemy
+    if _raw_db_url.startswith("postgres://"):
+        _raw_db_url = _raw_db_url.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif _raw_db_url.startswith("postgresql://") and not _raw_db_url.startswith("postgresql+"):
+        _raw_db_url = _raw_db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    DATABASE_URL = _raw_db_url
+else:
+    # Fallback to local SQLite file with absolute path using forward slashes
+    _sqlite_path = DATABASE_PATH.replace("\\", "/")
+    DATABASE_URL = f"sqlite:///{_sqlite_path}"
+
 # Allowed frontend origin for CORS (defaults to Vite dev server)
 FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
 

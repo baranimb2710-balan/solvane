@@ -29,6 +29,7 @@ from config import (
     ADMIN_EMAILS,
 )
 from database import (
+    engine,
     init_db,
     get_user_by_username,
     get_user_by_email,
@@ -133,10 +134,11 @@ def startup_event():
 @app.get("/api/health", tags=["System"])
 def health_check():
     """Returns the operational status of the Solvane API."""
+    db_status = "solvane.db connected" if engine.dialect.name == "sqlite" else f"{engine.dialect.name} connected"
     return {
         "status": "healthy",
         "service": "Solvane Backend",
-        "database": "solvane.db connected"
+        "database": db_status
     }
 
 # -------------------------------------------------------------

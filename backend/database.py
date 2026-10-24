@@ -1,760 +1,840 @@
-import sqlite3
+"""
+Solvane Database Module (SQLAlchemy 2.0)
+Supports both SQLite (local development) and PostgreSQL (Supabase / Production).
+Reads DATABASE_URL from environment; falls back safely to local solvane.db.
+Never logs connection strings, passwords, or credentials.
+"""
+
 import os
 import json
-from typing import Optional, List, Tuple, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
-from config import DATABASE_PATH, ADMIN_EMAILS
+from typing import Optional, List, Tuple, Dict, Any
 
-def get_db_connection():
-    """
-    Establishes a connection to the SQLite database.
-    Uses sqlite3.Row so we can access columns by name like a dictionary.
-    """
-    conn = sqlite3.connect(DATABASE_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+from sqlalchemy import (
+    create_engine,
+    event,
+    Column,
+    Integer,
+    String,
+    Text,
+    Float,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    func,
+    Index,
+    JSON,
+    select,
+    update,
+    delete,
+    desc,
+    asc,
+    or_,
+    and_
+)
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship, Session
+from config import DATABASE_URL, DATABASE_PATH, ADMIN_EMAILS
+
+# -------------------------------------------------------------
+# ENGINE & SESSION SETUP
+# -------------------------------------------------------------
+is_sqlite = DATABASE_URL.startswith("sqlite")
+
+engine_kwargs = {}
+if is_sqlite:
+    # check_same_thread: False allows FastAPI threads to access the SQLite connection
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    # Production PostgreSQL connection pooling settings
+    engine_kwargs["pool_pre_ping"] = True
+    engine_kwargs["pool_size"] = 10
+    engine_kwargs["max_overflow"] = 20
+
+engine = create_engine(DATABASE_URL, **engine_kwargs)
+
+# For SQLite: Enable foreign key constraints enforcement via PRAGMA
+if is_sqlite:
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+
+# -------------------------------------------------------------
+# DECLARATIVE ORM MODELS
+# -------------------------------------------------------------
+
+class User(Base):
+    """Users table for authentication and admin privileges."""
+    __tablename__ = "users"
+
+    user_id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(50), unique=True, index=True, nullable=False)
+    email = Column(String(120), unique=True, index=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    last_login = Column(DateTime, nullable=True)
+    is_admin = Column(Boolean, default=False, nullable=False)
+
+    # Relationships
+    login_logs = relationship("LoginLog", back_populates="user", cascade="all, delete-orphan")
+    chat_logs = relationship("ChatLog", back_populates="user", cascade="all, delete-orphan")
+    saved_plans = relationship("SavedPlan", back_populates="user", cascade="all, delete-orphan")
+
+
+class LoginLog(Base):
+    """Audit log for user login attempts (success and failure)."""
+    __tablename__ = "login_logs"
+
+    log_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=True, index=True)
+    login_time = Column(DateTime, server_default=func.now())
+    success = Column(Boolean, nullable=False)
+    email_attempted = Column(String(120), nullable=False, index=True)
+
+    user = relationship("User", back_populates="login_logs")
+
+
+class ChatLog(Base):
+    """Audit log for user questions submitted to the AI guide."""
+    __tablename__ = "chat_logs"
+
+    log_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=True, index=True)
+    question = Column(Text, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+    user = relationship("User", back_populates="chat_logs")
+
+
+class Place(Base):
+    """Famous tourist places and attractions in Ramanathapuram district."""
+    __tablename__ = "places"
+
+    id = Column(String(100), primary_key=True)
+    name_en = Column(String(200), nullable=False)
+    name_ta = Column(String(200), nullable=True)
+    category = Column(String(50), nullable=False, index=True)
+    subtype = Column(String(50), nullable=True)
+    short_description = Column(Text, nullable=True)
+    description = Column(Text, nullable=True)
+    timings = Column(String(150), nullable=True)
+    entry_fee = Column(String(100), nullable=True)
+    best_season = Column(String(100), nullable=True)
+    lat = Column(Float, nullable=True)
+    lng = Column(Float, nullable=True)
+    image = Column(String(255), nullable=True)
+    gallery = Column(JSON, nullable=True)
+    tags = Column(JSON, nullable=True)
+    estimated_visit_hours = Column(Float, default=1.5)
+    zone = Column(String(50), default="rameswaram_town")
+    dress_code = Column(String(255), nullable=True)
+    photography_rules = Column(String(255), nullable=True)
+    how_to_reach = Column(Text, nullable=True)
+    tips = Column(JSON, nullable=True)
+    nearby_places = Column(JSON, nullable=True)
+    verified = Column(Boolean, default=True)
+    created_by = Column(String(50), default="system")
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class PlanNarration(Base):
+    """Cache table for AI-generated trip narrations keyed by user and plan hash."""
+    __tablename__ = "plan_narrations"
+
+    user_id = Column(Integer, ForeignKey("users.user_id"), primary_key=True)
+    plan_hash = Column(String(64), primary_key=True)
+    narration_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class SavedPlan(Base):
+    """User-saved trip itineraries and AI narrations."""
+    __tablename__ = "saved_plans"
+
+    plan_id = Column(String(100), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.user_id"), nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    trip_json = Column(Text, nullable=False)
+    plan_json = Column(Text, nullable=False)
+    narration_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+
+    user = relationship("User", back_populates="saved_plans")
+
+
+class Hotel(Base):
+    """Verified accommodations and stays near Rameswaram and Ramanathapuram."""
+    __tablename__ = "hotels"
+
+    id = Column(String(100), primary_key=True)
+    name = Column(String(200), nullable=False)
+    area = Column(String(200), nullable=True)
+    category = Column(String(50), nullable=True, index=True)
+    price_range_per_night = Column(String(100), nullable=True)
+    rating = Column(Float, nullable=True)
+    amenities = Column(JSON, nullable=True)
+    contact = Column(String(100), nullable=True)
+    lat = Column(Float, nullable=True)
+    lng = Column(Float, nullable=True)
+    nearby_place_ids = Column(JSON, nullable=True)
+    image = Column(String(255), nullable=True)
+    map_link = Column(String(255), nullable=True)
+    verified = Column(Boolean, default=True)
+
+
+class Food(Base):
+    """Eateries, restaurants, and local culinary establishments."""
+    __tablename__ = "food"
+
+    id = Column(String(100), primary_key=True)
+    name = Column(String(200), nullable=False)
+    area = Column(String(200), nullable=True)
+    type = Column(String(50), nullable=True, index=True)
+    famous_for = Column(JSON, nullable=True)
+    price_range = Column(String(100), nullable=True)
+    timings = Column(String(150), nullable=True)
+    veg_or_nonveg = Column(String(20), nullable=True)
+    rating = Column(Float, nullable=True)
+    contact = Column(String(100), nullable=True)
+    lat = Column(Float, nullable=True)
+    lng = Column(Float, nullable=True)
+    nearby_place_ids = Column(JSON, nullable=True)
+    image = Column(String(255), nullable=True)
+    map_link = Column(String(255), nullable=True)
+    verified = Column(Boolean, default=True)
+
+
+# -------------------------------------------------------------
+# HELPER PARSERS & FORMATTERS
+# -------------------------------------------------------------
+
+def ensure_json_list(val: Any) -> list:
+    """Ensures a field is returned as a native Python list."""
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return val
+    if isinstance(val, str):
+        try:
+            parsed = json.loads(val)
+            return parsed if isinstance(parsed, list) else [parsed]
+        except Exception:
+            return []
+    return []
+
+
+def format_iso_datetime(dt: Any) -> Optional[str]:
+    """Formats datetime object to standard ISO 8601 string or returns string as-is."""
+    if dt is None:
+        return None
+    if isinstance(dt, datetime):
+        return dt.isoformat()
+    return str(dt)
+
+
+def format_place_model(p: Place) -> Optional[dict]:
+    """Transforms a Place ORM model into a cleanly typed dictionary."""
+    if not p:
+        return None
+    return {
+        "id": p.id,
+        "name_en": p.name_en or "",
+        "name_ta": p.name_ta or "",
+        "category": p.category or "",
+        "subtype": p.subtype or p.category or "",
+        "short_description": p.short_description or "",
+        "description": p.description or "",
+        "timings": p.timings or "",
+        "entry_fee": p.entry_fee or "",
+        "best_season": p.best_season or "",
+        "lat": float(p.lat) if p.lat is not None else 0.0,
+        "lng": float(p.lng) if p.lng is not None else 0.0,
+        "image": p.image or "",
+        "gallery": ensure_json_list(p.gallery),
+        "tags": ensure_json_list(p.tags),
+        "estimated_visit_hours": float(p.estimated_visit_hours) if p.estimated_visit_hours is not None else 1.5,
+        "zone": p.zone or "rameswaram_town",
+        "dress_code": p.dress_code or "",
+        "photography_rules": p.photography_rules or "",
+        "how_to_reach": p.how_to_reach or "",
+        "tips": ensure_json_list(p.tips),
+        "nearby_places": ensure_json_list(p.nearby_places),
+        "verified": bool(p.verified),
+        "created_by": p.created_by or "system",
+        "created_at": format_iso_datetime(p.created_at)
+    }
+
+
+def format_user_model(u: User) -> Optional[dict]:
+    """Transforms a User ORM model into a user dict."""
+    if not u:
+        return None
+    return {
+        "user_id": u.user_id,
+        "username": u.username,
+        "email": u.email,
+        "password_hash": u.password_hash,
+        "created_at": format_iso_datetime(u.created_at),
+        "last_login": format_iso_datetime(u.last_login),
+        "is_admin": bool(u.is_admin)
+    }
+
+
+# -------------------------------------------------------------
+# STARTUP & SEEDING HELPERS
+# -------------------------------------------------------------
 
 def init_db():
     """
-    Initializes the database on startup.
-    Creates the 'users', 'login_logs', and 'places' tables if they do not exist.
-    Migrates 'is_admin' column into 'users' table if missing.
-    Seeds 'places' table once from places.json if empty.
+    Initializes database tables and syncs admin privileges.
+    Works for both SQLite and PostgreSQL without raw sqlite3 commands.
+    Never prints connection strings or passwords in logs.
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    # Create all defined tables if they do not exist
+    Base.metadata.create_all(bind=engine)
 
-    # 1. Users table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        last_login TIMESTAMP NULL,
-        is_admin BOOLEAN DEFAULT 0
-    );
-    """)
-
-    # Check if 'is_admin' exists (in case table was previously created without it)
-    cursor.execute("PRAGMA table_info(users);")
-    user_columns = [col[1] for col in cursor.fetchall()]
-    if "is_admin" not in user_columns:
-        cursor.execute("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0;")
-
-    # Sync existing users with ADMIN_EMAILS list
-    for admin_email in ADMIN_EMAILS:
-        cursor.execute("UPDATE users SET is_admin = 1 WHERE LOWER(email) = LOWER(?)", (admin_email,))
-
-    # 2. Login logs table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS login_logs (
-        log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NULL,
-        login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        success BOOLEAN NOT NULL,
-        email_attempted TEXT NOT NULL,
-        FOREIGN KEY (user_id) REFERENCES users(user_id)
-    );
-    """)
-
-    # 3. Places table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS places (
-        id TEXT PRIMARY KEY,
-        name_en TEXT NOT NULL,
-        name_ta TEXT,
-        category TEXT NOT NULL,
-        subtype TEXT,
-        short_description TEXT,
-        description TEXT,
-        timings TEXT,
-        entry_fee TEXT,
-        best_season TEXT,
-        lat REAL,
-        lng REAL,
-        image TEXT,
-        gallery TEXT,
-        tags TEXT,
-        estimated_visit_hours REAL,
-        zone TEXT,
-        dress_code TEXT,
-        photography_rules TEXT,
-        how_to_reach TEXT,
-        tips TEXT,
-        nearby_places TEXT,
-        verified BOOLEAN DEFAULT 1,
-        created_by TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    """)
-
-    # 4. Chat logs table (for admin auditing of user questions)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS chat_logs (
-        log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        question TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(user_id)
-    );
-    """)
-
-    # 5. Plan narrations cache table (caches AI generated tips per user & plan hash)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS plan_narrations (
-        user_id INTEGER,
-        plan_hash TEXT NOT NULL,
-        narration_json TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (user_id, plan_hash),
-        FOREIGN KEY (user_id) REFERENCES users(user_id)
-    );
-    """)
-
-    # 6. Saved plans table (stores user saved itineraries & AI narrations)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS saved_plans (
-        plan_id TEXT PRIMARY KEY,
-        user_id INTEGER NOT NULL,
-        title TEXT NOT NULL,
-        trip_json TEXT NOT NULL,
-        plan_json TEXT NOT NULL,
-        narration_json TEXT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(user_id)
-    );
-    """)
-    cursor.execute("""
-    CREATE INDEX IF NOT EXISTS idx_saved_plans_user ON saved_plans(user_id, created_at DESC);
-    """)
-
-    conn.commit()
-    conn.close()
+    # Sync admin status for existing users matching ADMIN_EMAILS
+    with SessionLocal() as session:
+        for admin_email in ADMIN_EMAILS:
+            session.execute(
+                update(User)
+                .where(func.lower(User.email) == admin_email.lower())
+                .values(is_admin=True)
+            )
+        session.commit()
 
     # Seed places table from places.json if empty
     seed_places_from_json()
-    print("Database initialized successfully: users, login_logs, & places tables are ready.")
+
+    dialect_name = engine.dialect.name
+    print(f"Database initialized successfully ({dialect_name}): tables are ready.")
+
 
 def seed_places_from_json():
     """
     If the 'places' table is currently empty, seeds it from backend/data/places.json.
-    After this, SQLite database is the single source of truth.
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM places;")
-    count = cursor.fetchone()[0]
+    with SessionLocal() as session:
+        count = session.scalar(select(func.count(Place.id)))
+        if count == 0:
+            places_json_path = Path(__file__).parent / "data" / "places.json"
+            if places_json_path.exists():
+                with open(places_json_path, "r", encoding="utf-8") as f:
+                    raw_places = json.load(f)
 
-    if count == 0:
-        places_json_path = Path(__file__).parent / "data" / "places.json"
-        if places_json_path.exists():
-            with open(places_json_path, "r", encoding="utf-8") as f:
-                raw_places = json.load(f)
-
-            now_iso = datetime.utcnow().isoformat()
-            for p in raw_places:
-                cursor.execute("""
-                    INSERT INTO places (
-                        id, name_en, name_ta, category, subtype, short_description,
-                        description, timings, entry_fee, best_season, lat, lng,
-                        image, gallery, tags, estimated_visit_hours, zone,
-                        dress_code, photography_rules, how_to_reach, tips,
-                        nearby_places, verified, created_by, created_at
-                    ) VALUES (
-                        ?, ?, ?, ?, ?, ?,
-                        ?, ?, ?, ?, ?, ?,
-                        ?, ?, ?, ?, ?,
-                        ?, ?, ?, ?,
-                        ?, ?, ?, ?
+                for p in raw_places:
+                    place_obj = Place(
+                        id=p.get("id"),
+                        name_en=p.get("name_en", ""),
+                        name_ta=p.get("name_ta", ""),
+                        category=p.get("category", ""),
+                        subtype=p.get("subtype", p.get("category", "")),
+                        short_description=p.get("short_description", ""),
+                        description=p.get("description", ""),
+                        timings=p.get("timings", ""),
+                        entry_fee=p.get("entry_fee", ""),
+                        best_season=p.get("best_season", ""),
+                        lat=float(p.get("lat", 0.0)),
+                        lng=float(p.get("lng", 0.0)),
+                        image=p.get("image", ""),
+                        gallery=p.get("gallery", []),
+                        tags=p.get("tags", []),
+                        estimated_visit_hours=float(p.get("estimated_visit_hours", 1.5)),
+                        zone=p.get("zone", "rameswaram_town"),
+                        dress_code=p.get("dress_code", ""),
+                        photography_rules=p.get("photography_rules", ""),
+                        how_to_reach=p.get("how_to_reach", ""),
+                        tips=p.get("tips", []),
+                        nearby_places=p.get("nearby_places", []),
+                        verified=bool(p.get("verified", True)),
+                        created_by="system"
                     )
-                """, (
-                    p.get("id"),
-                    p.get("name_en", ""),
-                    p.get("name_ta", ""),
-                    p.get("category", ""),
-                    p.get("subtype", p.get("category", "")),
-                    p.get("short_description", ""),
-                    p.get("description", ""),
-                    p.get("timings", ""),
-                    p.get("entry_fee", ""),
-                    p.get("best_season", ""),
-                    float(p.get("lat", 0.0)),
-                    float(p.get("lng", 0.0)),
-                    p.get("image", ""),
-                    json.dumps(p.get("gallery", [])),
-                    json.dumps(p.get("tags", [])),
-                    float(p.get("estimated_visit_hours", 1.5)),
-                    p.get("zone", "rameswaram_town"),
-                    p.get("dress_code", ""),
-                    p.get("photography_rules", ""),
-                    p.get("how_to_reach", ""),
-                    json.dumps(p.get("tips", [])),
-                    json.dumps(p.get("nearby_places", [])),
-                    1 if p.get("verified", True) else 0,
-                    "system",
-                    now_iso
-                ))
-            conn.commit()
-            print(f"Seeded {len(raw_places)} places from places.json into SQLite.")
-        else:
-            print("places.json not found for initial seeding.")
-    conn.close()
+                    session.add(place_obj)
+                session.commit()
+                print(f"Seeded {len(raw_places)} places from places.json into database.")
+            else:
+                print("places.json not found for initial seeding.")
 
-def format_place_row(row):
-    """
-    Transforms an SQLite Row object for a place into a cleanly typed dictionary
-    matching the existing places.json schema.
-    """
-    if not row:
+
+# -------------------------------------------------------------
+# PLACES CRUD (SQLAlchemy 2.0)
+# -------------------------------------------------------------
+
+def get_all_places_db(category: str = None, subtype: str = None) -> List[dict]:
+    """Retrieves all places with optional category and subtype filtering."""
+    with SessionLocal() as session:
+        stmt = select(Place)
+
+        if category and category.strip().lower() != "all":
+            stmt = stmt.where(func.lower(Place.category) == category.strip().lower())
+
+        if subtype and subtype.strip().lower() != "all":
+            sub_clean = subtype.strip().lower()
+            if sub_clean in ("mosque_dargah", "morque_dargah"):
+                stmt = stmt.where(
+                    or_(
+                        func.lower(Place.subtype) == "mosque_dargah",
+                        func.lower(Place.subtype) == "morque_dargah"
+                    )
+                )
+            else:
+                stmt = stmt.where(func.lower(Place.subtype) == sub_clean)
+
+        stmt = stmt.order_by(asc(Place.name_en))
+        results = session.scalars(stmt).all()
+        return [format_place_model(p) for p in results]
+
+
+def get_place_by_id_db(place_id: str) -> Optional[dict]:
+    """Retrieves a single place by its unique slug ID."""
+    if not place_id:
         return None
-    d = dict(row)
-    
-    # Parse JSON fields safely
-    for json_col in ["gallery", "tags", "tips", "nearby_places"]:
-        val = d.get(json_col)
-        if isinstance(val, str):
-            try:
-                d[json_col] = json.loads(val)
-            except Exception:
-                d[json_col] = []
-        elif val is None:
-            d[json_col] = []
+    with SessionLocal() as session:
+        stmt = select(Place).where(func.lower(Place.id) == place_id.strip().lower())
+        place = session.scalars(stmt).first()
+        return format_place_model(place) if place else None
 
-    # Ensure correct data types
-    d["lat"] = float(d["lat"]) if d.get("lat") is not None else 0.0
-    d["lng"] = float(d["lng"]) if d.get("lng") is not None else 0.0
-    d["estimated_visit_hours"] = float(d["estimated_visit_hours"]) if d.get("estimated_visit_hours") is not None else 1.5
-    d["verified"] = bool(d.get("verified", False))
-    return d
-
-def get_all_places_db(category: str = None, subtype: str = None):
-    """
-    Retrieves all places from SQLite with optional filtering.
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    query = "SELECT * FROM places"
-    params = []
-    conditions = []
-
-    if category and category.strip().lower() != "all":
-        conditions.append("LOWER(category) = LOWER(?)")
-        params.append(category.strip())
-
-    if subtype and subtype.strip().lower() != "all":
-        sub_clean = subtype.strip().lower()
-        if sub_clean in ("mosque_dargah", "morque_dargah"):
-            conditions.append("(LOWER(subtype) = 'mosque_dargah' OR LOWER(subtype) = 'morque_dargah')")
-        else:
-            conditions.append("LOWER(subtype) = LOWER(?)")
-            params.append(sub_clean)
-
-    if conditions:
-        query += " WHERE " + " AND ".join(conditions)
-
-    query += " ORDER BY name_en ASC"
-    cursor.execute(query, tuple(params))
-    rows = cursor.fetchall()
-    conn.close()
-    return [format_place_row(r) for r in rows]
-
-def get_place_by_id_db(place_id: str):
-    """
-    Retrieves a single place by its unique slug ID.
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM places WHERE LOWER(id) = LOWER(?)", (place_id.strip(),))
-    row = cursor.fetchone()
-    conn.close()
-    return format_place_row(row) if row else None
 
 def place_slug_exists(slug: str) -> bool:
     """Checks if a place with given slug already exists."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT 1 FROM places WHERE LOWER(id) = LOWER(?)", (slug.strip(),))
-    exists = cursor.fetchone() is not None
-    conn.close()
-    return exists
+    if not slug:
+        return False
+    with SessionLocal() as session:
+        stmt = select(Place.id).where(func.lower(Place.id) == slug.strip().lower())
+        return session.scalars(stmt).first() is not None
 
-def create_place_db(place_data: dict):
-    """
-    Inserts a newly created place into the places table.
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO places (
-            id, name_en, name_ta, category, subtype, short_description,
-            description, timings, entry_fee, best_season, lat, lng,
-            image, gallery, tags, estimated_visit_hours, zone,
-            dress_code, photography_rules, how_to_reach, tips,
-            nearby_places, verified, created_by, created_at
-        ) VALUES (
-            ?, ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, ?,
-            ?, ?, ?, ?,
-            ?, ?, ?, ?
+
+def create_place_db(place_data: dict) -> Optional[dict]:
+    """Inserts a newly created place into the places table."""
+    with SessionLocal() as session:
+        place = Place(
+            id=place_data["id"],
+            name_en=place_data["name_en"],
+            name_ta=place_data.get("name_ta", ""),
+            category=place_data["category"],
+            subtype=place_data.get("subtype", place_data["category"]),
+            short_description=place_data.get("short_description", ""),
+            description=place_data.get("description", ""),
+            timings=place_data.get("timings", ""),
+            entry_fee=place_data.get("entry_fee", "Free"),
+            best_season=place_data.get("best_season", "All year"),
+            lat=float(place_data["lat"]),
+            lng=float(place_data["lng"]),
+            image=place_data.get("image", ""),
+            gallery=ensure_json_list(place_data.get("gallery", [])),
+            tags=ensure_json_list(place_data.get("tags", [])),
+            estimated_visit_hours=float(place_data.get("estimated_visit_hours", 1.5)),
+            zone=place_data.get("zone", "rameswaram_town"),
+            dress_code=place_data.get("dress_code", ""),
+            photography_rules=place_data.get("photography_rules", ""),
+            how_to_reach=place_data.get("how_to_reach", ""),
+            tips=ensure_json_list(place_data.get("tips", [])),
+            nearby_places=ensure_json_list(place_data.get("nearby_places", [])),
+            verified=bool(place_data.get("verified", True)),
+            created_by=place_data.get("created_by", "admin")
         )
-    """, (
-        place_data["id"],
-        place_data["name_en"],
-        place_data.get("name_ta", ""),
-        place_data["category"],
-        place_data.get("subtype", place_data["category"]),
-        place_data.get("short_description", ""),
-        place_data.get("description", ""),
-        place_data.get("timings", ""),
-        place_data.get("entry_fee", "Free"),
-        place_data.get("best_season", "All year"),
-        place_data["lat"],
-        place_data["lng"],
-        place_data.get("image", ""),
-        json.dumps(place_data.get("gallery", [])),
-        json.dumps(place_data.get("tags", [])),
-        place_data.get("estimated_visit_hours", 1.5),
-        place_data.get("zone", "rameswaram_town"),
-        place_data.get("dress_code", ""),
-        place_data.get("photography_rules", ""),
-        place_data.get("how_to_reach", ""),
-        json.dumps(place_data.get("tips", [])),
-        json.dumps(place_data.get("nearby_places", [])),
-        1 if place_data.get("verified", True) else 0,
-        place_data.get("created_by", "admin"),
-        place_data.get("created_at", datetime.utcnow().isoformat())
-    ))
-    conn.commit()
-    conn.close()
-    return get_place_by_id_db(place_data["id"])
+        session.add(place)
+        session.commit()
+        session.refresh(place)
+        return format_place_model(place)
 
-def update_place_db(place_id: str, place_data: dict):
-    """
-    Updates an existing place in SQLite.
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        UPDATE places SET
-            name_en = ?,
-            name_ta = ?,
-            category = ?,
-            subtype = ?,
-            short_description = ?,
-            description = ?,
-            timings = ?,
-            entry_fee = ?,
-            best_season = ?,
-            lat = ?,
-            lng = ?,
-            image = ?,
-            gallery = ?,
-            tags = ?,
-            estimated_visit_hours = ?,
-            zone = ?,
-            dress_code = ?,
-            photography_rules = ?,
-            how_to_reach = ?,
-            tips = ?,
-            nearby_places = ?,
-            verified = ?
-        WHERE LOWER(id) = LOWER(?)
-    """, (
-        place_data["name_en"],
-        place_data.get("name_ta", ""),
-        place_data["category"],
-        place_data.get("subtype", place_data["category"]),
-        place_data.get("short_description", ""),
-        place_data.get("description", ""),
-        place_data.get("timings", ""),
-        place_data.get("entry_fee", "Free"),
-        place_data.get("best_season", "All year"),
-        place_data["lat"],
-        place_data["lng"],
-        place_data.get("image", ""),
-        json.dumps(place_data.get("gallery", [])),
-        json.dumps(place_data.get("tags", [])),
-        place_data.get("estimated_visit_hours", 1.5),
-        place_data.get("zone", "rameswaram_town"),
-        place_data.get("dress_code", ""),
-        place_data.get("photography_rules", ""),
-        place_data.get("how_to_reach", ""),
-        json.dumps(place_data.get("tips", [])),
-        json.dumps(place_data.get("nearby_places", [])),
-        1 if place_data.get("verified", True) else 0,
-        place_id.strip()
-    ))
-    conn.commit()
-    conn.close()
-    return get_place_by_id_db(place_id)
+
+def update_place_db(place_id: str, place_data: dict) -> Optional[dict]:
+    """Updates an existing place in database."""
+    with SessionLocal() as session:
+        stmt = select(Place).where(func.lower(Place.id) == place_id.strip().lower())
+        place = session.scalars(stmt).first()
+        if not place:
+            return None
+
+        place.name_en = place_data["name_en"]
+        place.name_ta = place_data.get("name_ta", "")
+        place.category = place_data["category"]
+        place.subtype = place_data.get("subtype", place_data["category"])
+        place.short_description = place_data.get("short_description", "")
+        place.description = place_data.get("description", "")
+        place.timings = place_data.get("timings", "")
+        place.entry_fee = place_data.get("entry_fee", "Free")
+        place.best_season = place_data.get("best_season", "All year")
+        place.lat = float(place_data["lat"])
+        place.lng = float(place_data["lng"])
+        place.image = place_data.get("image", "")
+        place.gallery = ensure_json_list(place_data.get("gallery", []))
+        place.tags = ensure_json_list(place_data.get("tags", []))
+        place.estimated_visit_hours = float(place_data.get("estimated_visit_hours", 1.5))
+        place.zone = place_data.get("zone", "rameswaram_town")
+        place.dress_code = place_data.get("dress_code", "")
+        place.photography_rules = place_data.get("photography_rules", "")
+        place.how_to_reach = place_data.get("how_to_reach", "")
+        place.tips = ensure_json_list(place_data.get("tips", []))
+        place.nearby_places = ensure_json_list(place_data.get("nearby_places", []))
+        place.verified = bool(place_data.get("verified", True))
+
+        session.commit()
+        session.refresh(place)
+        return format_place_model(place)
+
 
 def delete_place_db(place_id: str) -> bool:
-    """
-    Deletes a place from SQLite by ID. Returns True if deleted, False if not found.
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM places WHERE LOWER(id) = LOWER(?)", (place_id.strip(),))
-    deleted = cursor.rowcount > 0
-    conn.commit()
-    conn.close()
-    return deleted
+    """Deletes a place from database by ID. Returns True if deleted, False if not found."""
+    with SessionLocal() as session:
+        stmt = delete(Place).where(func.lower(Place.id) == place_id.strip().lower())
+        res = session.execute(stmt)
+        session.commit()
+        return res.rowcount > 0
 
-def get_user_by_username(username: str):
+
+# -------------------------------------------------------------
+# USER AUTHENTICATION & PROFILE HELPERS
+# -------------------------------------------------------------
+
+def get_user_by_username(username: str) -> Optional[dict]:
     """Check if a user exists with the given username (case-insensitive)."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE LOWER(username) = LOWER(?)", (username,))
-    user = cursor.fetchone()
-    conn.close()
-    return user
+    if not username:
+        return None
+    with SessionLocal() as session:
+        stmt = select(User).where(func.lower(User.username) == username.strip().lower())
+        user = session.scalars(stmt).first()
+        return format_user_model(user)
 
-def get_user_by_email(email: str):
+
+def get_user_by_email(email: str) -> Optional[dict]:
     """Check if a user exists with the given email (case-insensitive)."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE LOWER(email) = LOWER(?)", (email,))
-    user = cursor.fetchone()
-    conn.close()
-    return user
+    if not email:
+        return None
+    with SessionLocal() as session:
+        stmt = select(User).where(func.lower(User.email) == email.strip().lower())
+        user = session.scalars(stmt).first()
+        return format_user_model(user)
 
-def get_user_by_id(user_id: int):
+
+def get_user_by_id(user_id: int) -> Optional[dict]:
     """Retrieve user details by user_id."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT user_id, username, email, created_at, last_login, is_admin FROM users WHERE user_id = ?", (user_id,))
-    user = cursor.fetchone()
-    conn.close()
-    return user
+    if not user_id:
+        return None
+    with SessionLocal() as session:
+        stmt = select(User).where(User.user_id == int(user_id))
+        user = session.scalars(stmt).first()
+        return format_user_model(user)
 
-def create_user(username: str, email: str, password_hash: str):
-    """Insert a new user record into the users table. Assigns admin privilege if email is in ADMIN_EMAILS."""
-    is_admin = 1 if email.lower() in ADMIN_EMAILS else 0
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO users (username, email, password_hash, is_admin)
-        VALUES (?, ?, ?, ?)
-    """, (username, email.lower(), password_hash, is_admin))
-    user_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return user_id
+
+def create_user(username: str, email: str, password_hash: str) -> int:
+    """Insert a new user record. Assigns admin privilege if email is in ADMIN_EMAILS."""
+    clean_email = email.strip().lower()
+    is_admin = clean_email in ADMIN_EMAILS
+
+    with SessionLocal() as session:
+        new_user = User(
+            username=username.strip(),
+            email=clean_email,
+            password_hash=password_hash,
+            is_admin=is_admin
+        )
+        session.add(new_user)
+        session.commit()
+        session.refresh(new_user)
+        return new_user.user_id
+
 
 def update_last_login(user_id: int):
     """Updates the last_login timestamp for a user, syncing is_admin if needed."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    now_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    cursor.execute("SELECT email FROM users WHERE user_id = ?", (user_id,))
-    row = cursor.fetchone()
-    if row and row["email"].lower() in ADMIN_EMAILS:
-        cursor.execute("UPDATE users SET last_login = ?, is_admin = 1 WHERE user_id = ?", (now_str, user_id))
-    else:
-        cursor.execute("UPDATE users SET last_login = ? WHERE user_id = ?", (now_str, user_id))
-    conn.commit()
-    conn.close()
+    with SessionLocal() as session:
+        stmt = select(User).where(User.user_id == int(user_id))
+        user = session.scalars(stmt).first()
+        if user:
+            user.last_login = datetime.utcnow()
+            if user.email.lower() in ADMIN_EMAILS:
+                user.is_admin = True
+            session.commit()
+
 
 def record_login_log(email_attempted: str, success: bool, user_id: int = None):
-    """
-    Records an entry in login_logs table for auditing and security monitoring.
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO login_logs (user_id, success, email_attempted)
-        VALUES (?, ?, ?)
-    """, (user_id, 1 if success else 0, email_attempted.lower()))
-    conn.commit()
-    conn.close()
+    """Records an entry in login_logs table for auditing and security monitoring."""
+    with SessionLocal() as session:
+        log = LoginLog(
+            user_id=user_id,
+            success=bool(success),
+            email_attempted=(email_attempted or "").strip().lower()
+        )
+        session.add(log)
+        session.commit()
+
 
 def log_chat_question(user_id: int, question: str):
-    """
-    Records a user's question in chat_logs table for admin analysis and auditing.
-    Does not store AI replies. Never logs sensitive keys.
-    """
+    """Records a user's question in chat_logs table for auditing."""
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO chat_logs (user_id, question)
-            VALUES (?, ?)
-        """, (user_id, question))
-        conn.commit()
-        conn.close()
+        with SessionLocal() as session:
+            chat_log = ChatLog(
+                user_id=user_id,
+                question=question.strip()
+            )
+            session.add(chat_log)
+            session.commit()
     except Exception as e:
         print(f"Error logging chat question: {e}")
 
-def get_cached_plan_narration(user_id: int, plan_hash: str):
-    """
-    Retrieves cached AI plan narration if it exists for this user and plan hash.
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT narration_json FROM plan_narrations WHERE user_id = ? AND plan_hash = ?",
-        (user_id, plan_hash)
-    )
-    row = cursor.fetchone()
-    conn.close()
-    if row:
-        try:
-            return json.loads(row["narration_json"])
-        except Exception:
-            return None
-    return None
+
+# -------------------------------------------------------------
+# PLAN NARRATION CACHE HELPERS
+# -------------------------------------------------------------
+
+def get_cached_plan_narration(user_id: int, plan_hash: str) -> Optional[dict]:
+    """Retrieves cached AI plan narration if it exists for this user and plan hash."""
+    with SessionLocal() as session:
+        stmt = select(PlanNarration.narration_json).where(
+            PlanNarration.user_id == int(user_id),
+            PlanNarration.plan_hash == plan_hash.strip()
+        )
+        raw_json = session.scalars(stmt).first()
+        if raw_json:
+            try:
+                return json.loads(raw_json)
+            except Exception:
+                return None
+        return None
+
 
 def save_plan_narration(user_id: int, plan_hash: str, narration_data: dict):
-    """
-    Saves or updates AI plan narration in SQLite cache.
-    """
+    """Saves or updates AI plan narration in cache."""
     try:
-        narration_json = json.dumps(narration_data)
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO plan_narrations (user_id, plan_hash, narration_json)
-            VALUES (?, ?, ?)
-            ON CONFLICT(user_id, plan_hash) DO UPDATE SET
-                narration_json = excluded.narration_json,
-                created_at = CURRENT_TIMESTAMP
-        """, (user_id, plan_hash, narration_json))
-        conn.commit()
-        conn.close()
+        narration_text = json.dumps(narration_data)
+        with SessionLocal() as session:
+            stmt = select(PlanNarration).where(
+                PlanNarration.user_id == int(user_id),
+                PlanNarration.plan_hash == plan_hash.strip()
+            )
+            existing = session.scalars(stmt).first()
+            if existing:
+                existing.narration_json = narration_text
+                existing.created_at = datetime.utcnow()
+            else:
+                new_narration = PlanNarration(
+                    user_id=int(user_id),
+                    plan_hash=plan_hash.strip(),
+                    narration_json=narration_text
+                )
+                session.add(new_narration)
+            session.commit()
     except Exception as e:
         print(f"Error caching plan narration: {e}")
+
 
 # -------------------------------------------------------------
 # SAVED PLANS HELPERS
 # -------------------------------------------------------------
+
 def count_user_saved_plans(user_id: int) -> int:
     """Returns the total number of plans saved by a specific user."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM saved_plans WHERE user_id = ?", (user_id,))
-    count = cursor.fetchone()[0]
-    conn.close()
-    return count
+    with SessionLocal() as session:
+        stmt = select(func.count(SavedPlan.plan_id)).where(SavedPlan.user_id == int(user_id))
+        return session.scalar(stmt) or 0
+
 
 def save_user_plan(plan_id: str, user_id: int, title: str, trip: dict, plan: dict, narration: Optional[dict] = None) -> bool:
     """Inserts a new saved plan record for the user."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO saved_plans (plan_id, user_id, title, trip_json, plan_json, narration_json)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (
-        plan_id,
-        user_id,
-        title,
-        json.dumps(trip or {}),
-        json.dumps(plan or {}),
-        json.dumps(narration) if narration else None
-    ))
-    conn.commit()
-    conn.close()
-    return True
+    with SessionLocal() as session:
+        saved = SavedPlan(
+            plan_id=plan_id,
+            user_id=int(user_id),
+            title=title.strip(),
+            trip_json=json.dumps(trip or {}),
+            plan_json=json.dumps(plan or {}),
+            narration_json=json.dumps(narration) if narration else None
+        )
+        session.add(saved)
+        session.commit()
+        return True
+
 
 def get_user_saved_plans(user_id: int) -> list:
     """Returns all plans saved by the user, sorted newest first."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT plan_id, user_id, title, trip_json, plan_json, narration_json, created_at
-        FROM saved_plans
-        WHERE user_id = ?
-        ORDER BY created_at DESC
-    """, (user_id,))
-    rows = cursor.fetchall()
-    conn.close()
+    with SessionLocal() as session:
+        stmt = (
+            select(SavedPlan)
+            .where(SavedPlan.user_id == int(user_id))
+            .order_by(desc(SavedPlan.created_at))
+        )
+        records = session.scalars(stmt).all()
 
-    results = []
-    for r in rows:
+        results = []
+        for r in records:
+            trip = {}
+            plan = {}
+            narration = None
+            try:
+                trip = json.loads(r.trip_json)
+            except Exception:
+                pass
+            try:
+                plan = json.loads(r.plan_json)
+            except Exception:
+                pass
+            if r.narration_json:
+                try:
+                    narration = json.loads(r.narration_json)
+                except Exception:
+                    pass
+
+            days_list = plan.get("days", []) if isinstance(plan, dict) else []
+            days_count = len(days_list) if len(days_list) > 0 else (trip.get("days") or 1)
+            stops_count = sum(len(d.get("stops", [])) for d in days_list if isinstance(d, dict))
+            budget_info = plan.get("budget", {}) if isinstance(plan, dict) else {}
+            budget_total = budget_info.get("total") or trip.get("budget") or 0
+
+            results.append({
+                "plan_id": r.plan_id,
+                "user_id": r.user_id,
+                "title": r.title,
+                "created_at": format_iso_datetime(r.created_at),
+                "days_count": days_count,
+                "stops_count": stops_count,
+                "budget": budget_total,
+                "trip": trip,
+                "plan": plan,
+                "narration": narration
+            })
+        return results
+
+
+def get_user_saved_plan_by_id(plan_id: str, user_id: int) -> Optional[dict]:
+    """Retrieves a single saved plan if it belongs to the user; otherwise returns None."""
+    with SessionLocal() as session:
+        stmt = select(SavedPlan).where(
+            SavedPlan.plan_id == plan_id.strip(),
+            SavedPlan.user_id == int(user_id)
+        )
+        r = session.scalars(stmt).first()
+        if not r:
+            return None
+
         trip = {}
         plan = {}
         narration = None
         try:
-            trip = json.loads(r["trip_json"])
+            trip = json.loads(r.trip_json)
         except Exception:
             pass
         try:
-            plan = json.loads(r["plan_json"])
+            plan = json.loads(r.plan_json)
         except Exception:
             pass
-        if r["narration_json"]:
+        if r.narration_json:
             try:
-                narration = json.loads(r["narration_json"])
+                narration = json.loads(r.narration_json)
             except Exception:
                 pass
 
-        days_list = plan.get("days", []) if isinstance(plan, dict) else []
-        days_count = len(days_list) if len(days_list) > 0 else (trip.get("days") or 1)
-        stops_count = sum(len(d.get("stops", [])) for d in days_list if isinstance(d, dict))
-        budget_info = plan.get("budget", {}) if isinstance(plan, dict) else {}
-        budget_total = budget_info.get("total") or trip.get("budget") or 0
-
-        results.append({
-            "plan_id": r["plan_id"],
-            "user_id": r["user_id"],
-            "title": r["title"],
-            "created_at": r["created_at"],
-            "days_count": days_count,
-            "stops_count": stops_count,
-            "budget": budget_total,
+        return {
+            "plan_id": r.plan_id,
+            "user_id": r.user_id,
+            "title": r.title,
+            "created_at": format_iso_datetime(r.created_at),
             "trip": trip,
             "plan": plan,
             "narration": narration
-        })
-    return results
+        }
 
-def get_user_saved_plan_by_id(plan_id: str, user_id: int) -> Optional[dict]:
-    """Retrieves a single saved plan if it belongs to the user; otherwise returns None."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT plan_id, user_id, title, trip_json, plan_json, narration_json, created_at
-        FROM saved_plans
-        WHERE plan_id = ? AND user_id = ?
-    """, (plan_id, user_id))
-    r = cursor.fetchone()
-    conn.close()
-    if not r:
-        return None
-
-    trip = {}
-    plan = {}
-    narration = None
-    try:
-        trip = json.loads(r["trip_json"])
-    except Exception:
-        pass
-    try:
-        plan = json.loads(r["plan_json"])
-    except Exception:
-        pass
-    if r["narration_json"]:
-        try:
-            narration = json.loads(r["narration_json"])
-        except Exception:
-            pass
-
-    return {
-        "plan_id": r["plan_id"],
-        "user_id": r["user_id"],
-        "title": r["title"],
-        "created_at": r["created_at"],
-        "trip": trip,
-        "plan": plan,
-        "narration": narration
-    }
 
 def delete_user_saved_plan_by_id(plan_id: str, user_id: int) -> bool:
     """Deletes a saved plan owned by the user. Returns True if deleted, False if not found."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM saved_plans WHERE plan_id = ? AND user_id = ?", (plan_id, user_id))
-    affected = cursor.rowcount
-    conn.commit()
-    conn.close()
-    return affected > 0
+    with SessionLocal() as session:
+        stmt = delete(SavedPlan).where(
+            SavedPlan.plan_id == plan_id.strip(),
+            SavedPlan.user_id == int(user_id)
+        )
+        res = session.execute(stmt)
+        session.commit()
+        return res.rowcount > 0
+
 
 # -------------------------------------------------------------
 # ADMIN DASHBOARD & AUDIT HELPERS
 # -------------------------------------------------------------
+
 def get_admin_dashboard_stats() -> dict:
-    """
-    Returns platform-wide summary metrics for administrator dashboard:
-    - total users
-    - new users registered in the last 7 days
-    - total successful logins
-    - failed login attempts in the last 24 hours
-    - total saved plans
-    - total chat questions asked
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    """Returns platform-wide summary metrics for administrator dashboard."""
+    with SessionLocal() as session:
+        now = datetime.utcnow()
+        seven_days_ago = now - timedelta(days=7)
+        twenty_four_hours_ago = now - timedelta(hours=24)
 
-    cursor.execute("SELECT COUNT(*) FROM users;")
-    total_users = cursor.fetchone()[0]
+        total_users = session.scalar(select(func.count(User.user_id))) or 0
+        new_users_7d = session.scalar(
+            select(func.count(User.user_id)).where(User.created_at >= seven_days_ago)
+        ) or 0
+        total_logins = session.scalar(
+            select(func.count(LoginLog.log_id)).where(LoginLog.success == True)
+        ) or 0
+        failed_logins_24h = session.scalar(
+            select(func.count(LoginLog.log_id)).where(
+                LoginLog.success == False,
+                LoginLog.login_time >= twenty_four_hours_ago
+            )
+        ) or 0
+        total_saved_plans = session.scalar(select(func.count(SavedPlan.plan_id))) or 0
+        total_chat_questions = session.scalar(select(func.count(ChatLog.log_id))) or 0
 
-    cursor.execute("SELECT COUNT(*) FROM users WHERE created_at >= datetime('now', '-7 days');")
-    new_users_7d = cursor.fetchone()[0]
+        return {
+            "total_users": total_users,
+            "new_users_7d": new_users_7d,
+            "total_logins": total_logins,
+            "failed_logins_24h": failed_logins_24h,
+            "total_saved_plans": total_saved_plans,
+            "total_chat_questions": total_chat_questions
+        }
 
-    cursor.execute("SELECT COUNT(*) FROM login_logs WHERE success = 1;")
-    total_logins = cursor.fetchone()[0]
-
-    cursor.execute("SELECT COUNT(*) FROM login_logs WHERE success = 0 AND login_time >= datetime('now', '-24 hours');")
-    failed_logins_24h = cursor.fetchone()[0]
-
-    cursor.execute("SELECT COUNT(*) FROM saved_plans;")
-    total_saved_plans = cursor.fetchone()[0]
-
-    cursor.execute("SELECT COUNT(*) FROM chat_logs;")
-    total_chat_questions = cursor.fetchone()[0]
-
-    conn.close()
-
-    return {
-        "total_users": total_users,
-        "new_users_7d": new_users_7d,
-        "total_logins": total_logins,
-        "failed_logins_24h": failed_logins_24h,
-        "total_saved_plans": total_saved_plans,
-        "total_chat_questions": total_chat_questions
-    }
 
 def get_admin_users_list(page: int = 1, limit: int = 15, search: Optional[str] = None) -> tuple:
-    """
-    Returns paginated user list with total count and successful login count.
-    NEVER includes password_hash.
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    offset = max(0, (page - 1) * limit)
+    """Returns paginated user list with total count and successful login count."""
+    with SessionLocal() as session:
+        offset = max(0, (page - 1) * limit)
+        stmt = select(User)
 
-    params = []
-    where_clause = ""
-    if search and search.strip():
-        term = f"%{search.strip().lower()}%"
-        where_clause = "WHERE LOWER(u.username) LIKE ? OR LOWER(u.email) LIKE ?"
-        params.extend([term, term])
+        if search and search.strip():
+            term = f"%{search.strip().lower()}%"
+            stmt = stmt.where(
+                or_(
+                    func.lower(User.username).like(term),
+                    func.lower(User.email).like(term)
+                )
+            )
 
-    # Count total matching users
-    count_sql = f"SELECT COUNT(*) FROM users u {where_clause}"
-    cursor.execute(count_sql, params)
-    total_count = cursor.fetchone()[0]
+        # Count total
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total_count = session.scalar(count_stmt) or 0
 
-    # Fetch users with login count subquery
-    data_sql = f"""
-        SELECT u.user_id, u.username, u.email, u.created_at, u.last_login, u.is_admin,
-               (SELECT COUNT(*) FROM login_logs l WHERE l.user_id = u.user_id AND l.success = 1) AS login_count
-        FROM users u
-        {where_clause}
-        ORDER BY u.created_at DESC
-        LIMIT ? OFFSET ?
-    """
-    cursor.execute(data_sql, params + [limit, offset])
-    rows = cursor.fetchall()
-    conn.close()
+        # Paginated fetch
+        data_stmt = stmt.order_by(desc(User.created_at)).limit(limit).offset(offset)
+        user_records = session.scalars(data_stmt).all()
 
-    users = [
-        {
-            "user_id": r["user_id"],
-            "username": r["username"],
-            "email": r["email"],
-            "created_at": r["created_at"],
-            "last_login": r["last_login"],
-            "is_admin": bool(r["is_admin"]),
-            "login_count": r["login_count"]
-        }
-        for r in rows
-    ]
+        users = []
+        for u in user_records:
+            # Count successful logins for each user
+            login_cnt = session.scalar(
+                select(func.count(LoginLog.log_id)).where(
+                    LoginLog.user_id == u.user_id,
+                    LoginLog.success == True
+                )
+            ) or 0
 
-    return users, total_count
+            users.append({
+                "user_id": u.user_id,
+                "username": u.username,
+                "email": u.email,
+                "created_at": format_iso_datetime(u.created_at),
+                "last_login": format_iso_datetime(u.last_login),
+                "is_admin": bool(u.is_admin),
+                "login_count": login_cnt
+            })
+
+        return users, total_count
+
 
 def get_admin_login_logs_list(
     page: int = 1,
@@ -763,147 +843,128 @@ def get_admin_login_logs_list(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None
 ) -> tuple:
-    """
-    Returns paginated login audit logs, newest first, with optional status and date filters.
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    offset = max(0, (page - 1) * limit)
+    """Returns paginated login audit logs, newest first, with optional status and date filters."""
+    with SessionLocal() as session:
+        offset = max(0, (page - 1) * limit)
+        stmt = select(LoginLog, User.username).outerjoin(User, LoginLog.user_id == User.user_id)
 
-    where_parts = []
-    params = []
+        if success is not None:
+            stmt = stmt.where(LoginLog.success == bool(success))
 
-    if success is not None:
-        where_parts.append("l.success = ?")
-        params.append(1 if success else 0)
+        if start_date:
+            try:
+                start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+                stmt = stmt.where(LoginLog.login_time >= start_dt)
+            except Exception:
+                pass
 
-    if start_date:
-        where_parts.append("l.login_time >= ?")
-        params.append(start_date)
+        if end_date:
+            try:
+                end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+                stmt = stmt.where(LoginLog.login_time <= end_dt)
+            except Exception:
+                pass
 
-    if end_date:
-        where_parts.append("l.login_time <= ?")
-        params.append(end_date)
+        # Total count
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total_count = session.scalar(count_stmt) or 0
 
-    where_sql = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
+        # Paginated results
+        data_stmt = stmt.order_by(desc(LoginLog.log_id)).limit(limit).offset(offset)
+        rows = session.execute(data_stmt).all()
 
-    # Total count
-    count_sql = f"SELECT COUNT(*) FROM login_logs l {where_sql}"
-    cursor.execute(count_sql, params)
-    total_count = cursor.fetchone()[0]
+        logs = [
+            {
+                "log_id": log.log_id,
+                "user_id": log.user_id,
+                "username": uname or "Unregistered / Unknown",
+                "email_attempted": log.email_attempted,
+                "time": format_iso_datetime(log.login_time),
+                "success": bool(log.success)
+            }
+            for log, uname in rows
+        ]
 
-    # Data
-    data_sql = f"""
-        SELECT l.log_id, l.user_id, u.username, l.email_attempted, l.login_time AS time, l.success
-        FROM login_logs l
-        LEFT JOIN users u ON l.user_id = u.user_id
-        {where_sql}
-        ORDER BY l.log_id DESC
-        LIMIT ? OFFSET ?
-    """
-    cursor.execute(data_sql, params + [limit, offset])
-    rows = cursor.fetchall()
-    conn.close()
+        return logs, total_count
 
-    logs = [
-        {
-            "log_id": r["log_id"],
-            "user_id": r["user_id"],
-            "username": r["username"] or "Unregistered / Unknown",
-            "email_attempted": r["email_attempted"],
-            "time": r["time"],
-            "success": bool(r["success"])
-        }
-        for r in rows
-    ]
-
-    return logs, total_count
 
 def get_admin_chat_logs_list(page: int = 1, limit: int = 20) -> tuple:
-    """
-    Returns paginated chat questions asked to Solvane guide.
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    offset = max(0, (page - 1) * limit)
+    """Returns paginated chat questions asked to Solvane guide."""
+    with SessionLocal() as session:
+        offset = max(0, (page - 1) * limit)
 
-    cursor.execute("SELECT COUNT(*) FROM chat_logs;")
-    total_count = cursor.fetchone()[0]
+        total_count = session.scalar(select(func.count(ChatLog.log_id))) or 0
 
-    data_sql = """
-        SELECT c.log_id, c.user_id, u.username, u.email, c.question, c.created_at AS time
-        FROM chat_logs c
-        LEFT JOIN users u ON c.user_id = u.user_id
-        ORDER BY c.log_id DESC
-        LIMIT ? OFFSET ?
-    """
-    cursor.execute(data_sql, (limit, offset))
-    rows = cursor.fetchall()
-    conn.close()
+        stmt = (
+            select(ChatLog, User.username, User.email)
+            .outerjoin(User, ChatLog.user_id == User.user_id)
+            .order_by(desc(ChatLog.log_id))
+            .limit(limit)
+            .offset(offset)
+        )
+        rows = session.execute(stmt).all()
 
-    questions = [
-        {
-            "log_id": r["log_id"],
-            "user_id": r["user_id"],
-            "username": r["username"] or f"User #{r['user_id']}",
-            "email": r["email"] or "",
-            "question": r["question"],
-            "time": r["time"]
-        }
-        for r in rows
-    ]
+        questions = [
+            {
+                "log_id": chat.log_id,
+                "user_id": chat.user_id,
+                "username": uname or f"User #{chat.user_id}",
+                "email": uemail or "",
+                "question": chat.question,
+                "time": format_iso_datetime(chat.created_at)
+            }
+            for chat, uname, uemail in rows
+        ]
 
-    return questions, total_count
+        return questions, total_count
+
 
 def get_admin_all_users_for_export() -> list:
     """Returns all users for CSV export. Never includes password hashes."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT u.user_id, u.username, u.email, u.created_at, u.last_login, u.is_admin,
-               (SELECT COUNT(*) FROM login_logs l WHERE l.user_id = u.user_id AND l.success = 1) AS login_count
-        FROM users u
-        ORDER BY u.created_at ASC
-    """)
-    rows = cursor.fetchall()
-    conn.close()
-    return [
-        {
-            "user_id": r["user_id"],
-            "username": r["username"],
-            "email": r["email"],
-            "created_at": r["created_at"],
-            "last_login": r["last_login"] or "",
-            "is_admin": "Yes" if r["is_admin"] else "No",
-            "login_count": r["login_count"]
-        }
-        for r in rows
-    ]
+    with SessionLocal() as session:
+        stmt = select(User).order_by(asc(User.created_at))
+        records = session.scalars(stmt).all()
+
+        results = []
+        for u in records:
+            login_cnt = session.scalar(
+                select(func.count(LoginLog.log_id)).where(
+                    LoginLog.user_id == u.user_id,
+                    LoginLog.success == True
+                )
+            ) or 0
+
+            results.append({
+                "user_id": u.user_id,
+                "username": u.username,
+                "email": u.email,
+                "created_at": format_iso_datetime(u.created_at),
+                "last_login": format_iso_datetime(u.last_login) or "",
+                "is_admin": "Yes" if u.is_admin else "No",
+                "login_count": login_cnt
+            })
+        return results
+
 
 def get_admin_all_login_logs_for_export() -> list:
     """Returns login audit logs for CSV export."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT l.log_id, l.user_id, u.username, l.email_attempted, l.login_time, l.success
-        FROM login_logs l
-        LEFT JOIN users u ON l.user_id = u.user_id
-        ORDER BY l.log_id DESC
-        LIMIT 5000
-    """)
-    rows = cursor.fetchall()
-    conn.close()
-    return [
-        {
-            "log_id": r["log_id"],
-            "user_id": r["user_id"] or "",
-            "username": r["username"] or "",
-            "email_attempted": r["email_attempted"],
-            "success": "Success" if r["success"] else "Failed",
-            "login_time": r["login_time"]
-        }
-        for r in rows
-    ]
+    with SessionLocal() as session:
+        stmt = (
+            select(LoginLog, User.username)
+            .outerjoin(User, LoginLog.user_id == User.user_id)
+            .order_by(desc(LoginLog.log_id))
+            .limit(5000)
+        )
+        rows = session.execute(stmt).all()
 
-
-
+        return [
+            {
+                "log_id": log.log_id,
+                "user_id": log.user_id or "",
+                "username": uname or "",
+                "email_attempted": log.email_attempted,
+                "success": "Success" if log.success else "Failed",
+                "login_time": format_iso_datetime(log.login_time)
+            }
+            for log, uname in rows
+        ]
